@@ -1,0 +1,19 @@
+# Entornos y datos privados
+data.php
+whatsapp_data.php
+leads.json
+whatsapp_bot_echoes.json
+whatsapp_debug.log
+*.log
+
+# Subidas de archivos
+uploads/
+*.pdf
+
+# Archivos comprimidos y del sistema
+*.zip
+*.tar.gz
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
