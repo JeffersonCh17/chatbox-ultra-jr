@@ -67,6 +67,58 @@ if (isset($_SESSION['logged_in']) && isset($_GET['export_leads'])) {
     exit;
 }
 
+// Limpiar Conversaciones
+if (isset($_SESSION['logged_in']) && isset($_GET['clear_convs'])) {
+    $id = $_GET['clear_convs'];
+    if ($id === 'all') {
+        $file = __DIR__ . '/conversations.json';
+        if (file_exists($file)) @unlink($file);
+    } else {
+        clear_bot_conversations($id);
+    }
+    header("Location: admin.php?tab=analytics&success=convs_cleared");
+    exit;
+}
+
+// Exportar Conversaciones a CSV
+if (isset($_SESSION['logged_in']) && isset($_GET['export_convs'])) {
+    $filter_id = $_GET['export_convs'];
+    $all_convs = get_conversations();
+    
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename=conversaciones_chatbox_' . date('Ymd_His') . '.csv');
+    
+    $output = fopen('php://output', 'w');
+    fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF)); // BOM UTF-8
+    fputcsv($output, ['Bot ID', 'Canal', 'ID Sesión', 'Fecha Inicio', 'Última Actividad', 'País', 'Ciudad', 'IP/Teléfono', 'Nombre', 'Total Mensajes', 'Transcripción Completa']);
+    
+    foreach ($all_convs as $b_id => $sessions) {
+        if ($filter_id !== 'all' && $filter_id !== $b_id) continue;
+        foreach ($sessions as $s_id => $c) {
+            $transcript = '';
+            foreach (($c['messages'] ?? []) as $m) {
+                $sender = ($m['sender'] === 'user') ? 'Usuario' : 'Bot';
+                $transcript .= "[{$m['time']} $sender]: " . str_replace(["\r", "\n"], ' ', $m['text']) . " | ";
+            }
+            fputcsv($output, [
+                $b_id,
+                $c['channel'] ?? 'web',
+                $s_id,
+                $c['started_at'] ?? '',
+                $c['last_activity'] ?? '',
+                $c['country'] ?? '',
+                $c['city'] ?? '',
+                !empty($c['user_phone']) ? $c['user_phone'] : ($c['ip'] ?? ''),
+                $c['user_name'] ?? '',
+                $c['messages_count'] ?? count($c['messages'] ?? []),
+                $transcript
+            ]);
+        }
+    }
+    fclose($output);
+    exit;
+}
+
 // Crear Bot
 if (isset($_SESSION['logged_in']) && isset($_POST['create_bot'])) {
     $bot_id = 'bot_' . substr(md5(uniqid()), 0, 8);
@@ -271,10 +323,18 @@ $active_tab = $_GET['tab'] ?? 'web';
 $opened_bot_id = $_GET['opened'] ?? '';
 $opened_wa_id = $_GET['opened_wa'] ?? '';
 $action_success = $_GET['success'] ?? '';
+
+$all_convs = get_conversations();
+$total_conv_count = 0;
+foreach ($all_convs as $b_convs) {
+    if (is_array($b_convs)) $total_conv_count += count($b_convs);
+}
+
 if ($action_success === 'created') $success = "¡Chat Web creado exitosamente!";
 if ($action_success === 'updated') $success = "¡Configuración de Chat Web actualizada!";
 if ($action_success === 'wa_created') $success = "¡Número / Instancia de WhatsApp creada exitosamente!";
 if ($action_success === 'wa_updated') $success = "¡Configuración de WhatsApp actualizada exitosamente!";
+if ($action_success === 'convs_cleared') $success = "¡Historial de conversaciones vaciado exitosamente!";
 
 $base_url = get_system_base_url();
 ?>
@@ -431,6 +491,45 @@ $base_url = get_system_base_url();
         .nav-tab-btn.wa-tab.active .tab-badge {
             background: #dcfce7; color: #166534;
         }
+        .nav-tab-btn.analytics-tab.active {
+            color: #d97706; border-color: #fde68a;
+        }
+        .nav-tab-btn.analytics-tab.active .tab-badge {
+            background: #fef3c7; color: #92400e;
+        }
+
+        /* ANALYTICS & CHAT EXPLORER STYLES */
+        .analytics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .kpi-card { background: #ffffff; border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.02); display: flex; align-items: center; gap: 15px; }
+        .kpi-icon { width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; }
+        .kpi-title { font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; }
+        .kpi-value { font-size: 26px; font-weight: 800; color: #0f172a; line-height: 1.1; }
+        .kpi-sub { font-size: 11.5px; color: #64748b; margin-top: 4px; }
+
+        .country-breakdown { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; }
+        .country-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+        .country-chip { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px; padding: 5px 12px; font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+
+        .chat-explorer { display: grid; grid-template-columns: 380px 1fr; gap: 0; background: #fff; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; min-height: 620px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); }
+        @media(max-width: 900px) { .chat-explorer { grid-template-columns: 1fr; } }
+
+        .chat-list-pane { border-right: 1px solid var(--border); display: flex; flex-direction: column; background: #fafbfc; height: 680px; }
+        .chat-list-header { padding: 14px; border-bottom: 1px solid var(--border); background: #ffffff; }
+        .chat-list-scroll { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+        .chat-conv-item { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; cursor: pointer; transition: all 0.15s ease; text-decoration: none; color: inherit; display: block; position: relative; }
+        .chat-conv-item:hover { border-color: #cbd5e1; background: #f8fafc; transform: translateY(-1px); }
+        .chat-conv-item.active { border-color: #2563eb; background: #eff6ff; box-shadow: 0 0 0 1.5px #2563eb; }
+
+        .chat-view-pane { display: flex; flex-direction: column; background: #f8fafc; height: 680px; }
+        .chat-view-header { padding: 16px 20px; background: #ffffff; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .chat-view-messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+        .chat-bubble-row { display: flex; flex-direction: column; }
+        .chat-bubble-row.user { align-items: flex-end; }
+        .chat-bubble-row.bot { align-items: flex-start; }
+        .chat-msg-bubble { max-width: 80%; padding: 10px 14px; border-radius: 12px; font-size: 13.5px; line-height: 1.5; word-break: break-word; white-space: pre-wrap; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+        .chat-bubble-row.user .chat-msg-bubble { background: #2563eb; color: #ffffff; border-bottom-right-radius: 2px; }
+        .chat-bubble-row.bot .chat-msg-bubble { background: #ffffff; color: #1e293b; border: 1px solid #e2e8f0; border-bottom-left-radius: 2px; }
+        .chat-msg-meta { font-size: 11px; color: #94a3b8; margin-top: 4px; padding: 0 4px; }
 
         /* Simulador WhatsApp */
         .simulator-box {
@@ -473,7 +572,7 @@ $base_url = get_system_base_url();
         <a href="?logout=1" style="color:#64748b; font-weight:600; text-decoration:none;">Cerrar Sesión ➔</a>
     </div>
 
-    <!-- PESTAÑAS PRINCIPALES: CHATS WEB vs WHATSAPP -->
+    <!-- PESTAÑAS PRINCIPALES: CHATS WEB vs WHATSAPP vs HISTORIAL/METRICAS -->
     <div class="nav-tabs">
         <a href="?tab=web" class="nav-tab-btn <?php echo $active_tab === 'web' ? 'active' : ''; ?>">
             🌐 Chats Web (Widget)
@@ -482,6 +581,10 @@ $base_url = get_system_base_url();
         <a href="?tab=whatsapp" class="nav-tab-btn wa-tab <?php echo $active_tab === 'whatsapp' ? 'active' : ''; ?>">
             📱 WhatsApp (Menús & Gemini)
             <span class="tab-badge" style="<?php echo !empty($wa_settings['instances']) ? 'background:#bbf7d0; color:#166534;' : ''; ?>"><?php echo count($wa_settings['instances']); ?></span>
+        </a>
+        <a href="?tab=analytics" class="nav-tab-btn analytics-tab <?php echo $active_tab === 'analytics' ? 'active' : ''; ?>">
+            📊 Historial y Métricas en Vivo
+            <span class="tab-badge" style="<?php echo $total_conv_count > 0 ? 'background:#fef3c7; color:#92400e;' : ''; ?>"><?php echo $total_conv_count; ?></span>
         </a>
     </div>
 
@@ -659,6 +762,10 @@ $base_url = get_system_base_url();
 
                                     <?php if ($lead_count > 0): ?>
                                         <span class="badge badge-leads">👥 <?php echo $lead_count; ?> Leads</span>
+                                    <?php endif; ?>
+
+                                    <?php if (!empty($all_convs[$id])): ?>
+                                        <a href="?tab=analytics&filter_bot=<?php echo $id; ?>" onclick="event.stopPropagation();" class="badge" style="background:#fef3c7; color:#92400e; text-decoration:none;" title="Ver conversaciones y países en vivo">📊 <?php echo count($all_convs[$id]); ?> Chats</a>
                                     <?php endif; ?>
 
                                     <?php if ($has_errors): ?>
@@ -984,6 +1091,9 @@ $base_url = get_system_base_url();
                                     <?php if ($wa_lead_count > 0): ?>
                                         <span class="badge badge-leads">👥 <?php echo $wa_lead_count; ?> Contactos</span>
                                     <?php endif; ?>
+                                    <?php if (!empty($all_convs[$wa_id])): ?>
+                                        <a href="?tab=analytics&filter_bot=<?php echo $wa_id; ?>" onclick="event.stopPropagation();" class="badge" style="background:#fef3c7; color:#92400e; text-decoration:none;" title="Ver conversaciones y países en vivo">📊 <?php echo count($all_convs[$wa_id]); ?> Chats</a>
+                                    <?php endif; ?>
                                     <?php if ($has_wa_err): ?>
                                         <span class="badge badge-err">⚠️ Error Reciente</span>
                                     <?php endif; ?>
@@ -1246,6 +1356,343 @@ $base_url = get_system_base_url();
 
     </div>
     <?php endif; // Fin if active_tab === 'whatsapp' ?>
+
+    <!-- ======================================================== -->
+    <!-- PESTAÑA 3: HISTORIAL Y MÉTRICAS EN VIVO                   -->
+    <!-- ======================================================== -->
+    <?php if ($active_tab === 'analytics'): 
+        $filter_bot = $_GET['filter_bot'] ?? 'all';
+        $filter_channel = $_GET['filter_channel'] ?? 'all';
+        $selected_sess = $_GET['sess'] ?? '';
+
+        $conv_items = [];
+        $all_countries = [];
+        $total_msgs = 0;
+        $unique_visitors = [];
+
+        foreach ($all_convs as $b_id => $b_sessions) {
+            if (!is_array($b_sessions)) continue;
+            $b_name = $settings['bots'][$b_id]['name'] ?? ($wa_settings['instances'][$b_id]['name'] ?? $b_id);
+
+            foreach ($b_sessions as $s_id => $sess) {
+                $c_channel = $sess['channel'] ?? 'web';
+                $c_country = !empty($sess['country']) ? $sess['country'] : 'Desconocido';
+                $c_flag = !empty($sess['flag']) ? $sess['flag'] : '🌐';
+                $c_msgs = count($sess['messages'] ?? []);
+                
+                $total_msgs += $c_msgs;
+                $v_key = !empty($sess['user_phone']) ? $sess['user_phone'] : (!empty($sess['ip']) ? $sess['ip'] : $s_id);
+                $unique_visitors[$v_key] = true;
+
+                if (!isset($all_countries[$c_country])) {
+                    $all_countries[$c_country] = ['count' => 0, 'flag' => $c_flag, 'code' => $sess['country_code'] ?? ''];
+                }
+                $all_countries[$c_country]['count']++;
+
+                if ($filter_bot !== 'all' && $filter_bot !== $b_id) continue;
+                if ($filter_channel !== 'all' && $filter_channel !== $c_channel) continue;
+
+                $conv_items[] = array_merge($sess, [
+                    '_bot_id' => $b_id,
+                    '_bot_name' => $b_name,
+                    '_session_id' => $s_id
+                ]);
+            }
+        }
+
+        usort($conv_items, function($a, $b) {
+            return strtotime($b['last_activity'] ?? $b['started_at'] ?? '2000-01-01') <=> strtotime($a['last_activity'] ?? $a['started_at'] ?? '2000-01-01');
+        });
+
+        uasort($all_countries, function($a, $b) {
+            return $b['count'] <=> $a['count'];
+        });
+
+        $active_conv = null;
+        if (!empty($selected_sess)) {
+            foreach ($conv_items as $ci) {
+                if ($ci['_session_id'] === $selected_sess) {
+                    $active_conv = $ci;
+                    break;
+                }
+            }
+        }
+        if (!$active_conv && !empty($conv_items)) {
+            $active_conv = $conv_items[0];
+        }
+    ?>
+    <div style="max-width: 1200px; margin: 0 auto 30px;">
+        
+        <!-- ENCABEZADO Y ACCIONES -->
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px; margin-bottom:20px;">
+            <div>
+                <h2 style="margin:0 0 5px 0; color:#0f172a; font-size:22px;">📊 Historial de Visitantes y Métricas en Vivo</h2>
+                <div style="font-size:13.5px; color:#64748b;">
+                    Conoce quiénes te escriben, desde qué país y ciudad se conectan, y revisa cada pregunta y respuesta de tus chats.
+                </div>
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <a href="admin.php?export_convs=<?php echo urlencode($filter_bot); ?>" class="fs-action-pill primary" title="Descargar CSV">
+                    📥 Descargar CSV Histórico
+                </a>
+                <a href="admin.php?clear_convs=<?php echo urlencode($filter_bot); ?>" onclick="return confirm('¿Seguro que deseas vaciar este historial de conversaciones? Esta acción no se puede deshacer.');" class="fs-action-pill" style="color:#ef4444; border-color:#fca5a5;">
+                    🗑️ Vaciar Historial
+                </a>
+            </div>
+        </div>
+
+        <!-- TARJETAS KPI -->
+        <div class="analytics-grid">
+            <div class="kpi-card">
+                <div class="kpi-icon" style="background:#eff6ff; color:#2563eb;">👥</div>
+                <div>
+                    <div class="kpi-title">Visitantes Únicos</div>
+                    <div class="kpi-value"><?php echo count($unique_visitors); ?></div>
+                    <div class="kpi-sub">Por IP y Teléfono</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon" style="background:#f0fdf4; color:#16a34a;">💬</div>
+                <div>
+                    <div class="kpi-title">Conversaciones</div>
+                    <div class="kpi-value"><?php echo $total_conv_count; ?></div>
+                    <div class="kpi-sub">Sesiones registradas</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon" style="background:#fef3c7; color:#d97706;">📨</div>
+                <div>
+                    <div class="kpi-title">Mensajes Totales</div>
+                    <div class="kpi-value"><?php echo $total_msgs; ?></div>
+                    <div class="kpi-sub">Preguntas & Respuestas</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon" style="background:#fdf2f8; color:#db2777;">🌍</div>
+                <div>
+                    <div class="kpi-title">Países Detectados</div>
+                    <div class="kpi-value"><?php echo count($all_countries); ?></div>
+                    <div class="kpi-sub">Geolocalización IP / Prefijo</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DESGLOSE DE PAÍSES -->
+        <?php if (!empty($all_countries)): ?>
+        <div class="country-breakdown">
+            <strong style="font-size:13px; color:#334155;">🌍 Distribución por País de Origen:</strong>
+            <div class="country-chips">
+                <?php foreach ($all_countries as $country_name => $c_data): 
+                    $pct = $total_conv_count > 0 ? round(($c_data['count'] / $total_conv_count) * 100) : 0;
+                ?>
+                    <div class="country-chip">
+                        <span style="font-size:18px;"><?php echo $c_data['flag']; ?></span>
+                        <span><?php echo htmlspecialchars($country_name); ?>:</span>
+                        <strong style="color:#0f172a;"><?php echo $c_data['count']; ?></strong>
+                        <span style="color:#64748b; font-size:11px;">(<?php echo $pct; ?>%)</span>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <!-- BARRA DE FILTROS -->
+        <div style="background:#ffffff; border:1px solid var(--border); border-radius:10px; padding:12px 18px; margin-bottom:15px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                <label style="font-size:13px; font-weight:600; color:#475569; margin:0;">Filtrar por Bot:</label>
+                <select onchange="location.href='?tab=analytics&filter_channel=<?php echo urlencode($filter_channel); ?>&filter_bot=' + encodeURIComponent(this.value)" style="margin:0; width:auto; padding:6px 10px; font-size:13px;">
+                    <option value="all" <?php echo $filter_bot === 'all' ? 'selected' : ''; ?>>⚡ Todos los Bots (<?php echo $total_conv_count; ?>)</option>
+                    <?php if (!empty($settings['bots'])): ?>
+                        <optgroup label="🌐 Bots Web (Widget)">
+                            <?php foreach ($settings['bots'] as $b_id => $b_data): 
+                                $b_cnt = count($all_convs[$b_id] ?? []);
+                            ?>
+                                <option value="<?php echo $b_id; ?>" <?php echo $filter_bot === $b_id ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($b_data['name']); ?> (<?php echo $b_cnt; ?>)
+                                </option>
+                            <?php endforeach; ?>
+                        </optgroup>
+                    <?php endif; ?>
+                    <?php if (!empty($wa_settings['instances'])): ?>
+                        <optgroup label="📱 WhatsApp">
+                            <?php foreach ($wa_settings['instances'] as $wa_id => $wa_data): 
+                                $wa_cnt = count($all_convs[$wa_id] ?? []);
+                            ?>
+                                <option value="<?php echo $wa_id; ?>" <?php echo $filter_bot === $wa_id ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($wa_data['name']); ?> (<?php echo $wa_cnt; ?>)
+                                </option>
+                            <?php endforeach; ?>
+                        </optgroup>
+                    <?php endif; ?>
+                </select>
+
+                <label style="font-size:13px; font-weight:600; color:#475569; margin:0; margin-left:8px;">Canal:</label>
+                <select onchange="location.href='?tab=analytics&filter_bot=<?php echo urlencode($filter_bot); ?>&filter_channel=' + encodeURIComponent(this.value)" style="margin:0; width:auto; padding:6px 10px; font-size:13px;">
+                    <option value="all" <?php echo $filter_channel === 'all' ? 'selected' : ''; ?>>Todos los Canales</option>
+                    <option value="web" <?php echo $filter_channel === 'web' ? 'selected' : ''; ?>>🌐 Solo Web Widget</option>
+                    <option value="whatsapp" <?php echo $filter_channel === 'whatsapp' ? 'selected' : ''; ?>>📱 Solo WhatsApp</option>
+                </select>
+            </div>
+            
+            <div style="font-size:13px; font-weight:600; color:#64748b;" id="convsListCounter">
+                Mostrando <?php echo count($conv_items); ?> de <?php echo $total_conv_count; ?> conversaciones
+            </div>
+        </div>
+
+        <!-- EXPLORADOR SPLIT-SCREEN (LISTA IZQUIERDA + CHAT DERECHA) -->
+        <?php if (empty($conv_items)): ?>
+            <div style="background:#ffffff; border:2px dashed #cbd5e1; border-radius:12px; padding:50px 20px; text-align:center; color:#64748b;">
+                <div style="font-size:48px; margin-bottom:12px;">💬</div>
+                <h3 style="margin:0 0 8px 0; color:#0f172a;">No hay conversaciones registradas todavía</h3>
+                <p style="font-size:14px; max-width:500px; margin:0 auto; line-height:1.5;">
+                    En cuanto un visitante escriba un mensaje a través de tu widget web o WhatsApp, se registrará aquí automáticamente en tiempo real con su <strong>país, ciudad, dirección IP y el diálogo completo</strong>.
+                </p>
+            </div>
+        <?php else: ?>
+            <div class="chat-explorer">
+                
+                <!-- COLUMNA IZQUIERDA: LISTADO DE SESIONES -->
+                <div class="chat-list-pane">
+                    <div class="chat-list-header">
+                        <div class="search-box">
+                            <span class="search-box-icon">🔍</span>
+                            <input type="text" id="convSearchInput" placeholder="Buscar por país, IP, teléfono, texto..." onkeyup="filterConversationsList()" style="height:38px; font-size:13px;">
+                        </div>
+                    </div>
+
+                    <div class="chat-list-scroll" id="convsScrollContainer">
+                        <?php foreach ($conv_items as $ci): 
+                            $is_current = ($active_conv && $active_conv['_session_id'] === $ci['_session_id']);
+                            $c_flag = !empty($ci['flag']) ? $ci['flag'] : '🌐';
+                            $c_country = !empty($ci['country']) ? $ci['country'] : 'Desconocido';
+                            $c_city = !empty($ci['city']) ? $ci['city'] : '';
+                            $c_ip = $ci['ip'] ?? '';
+                            $c_phone = $ci['user_phone'] ?? '';
+                            $c_name = $ci['user_name'] ?? '';
+                            $c_channel = $ci['channel'] ?? 'web';
+                            $c_msgs = $ci['messages'] ?? [];
+                            $last_msg = !empty($c_msgs) ? end($c_msgs)['text'] : 'Sin mensajes';
+                            $last_msg_short = mb_strimwidth($last_msg, 0, 55, '...');
+                            $last_time = date('d/m H:i', strtotime($ci['last_activity'] ?? $ci['started_at']));
+                            
+                            $title_display = !empty($c_name) ? htmlspecialchars($c_name) : (!empty($c_phone) ? htmlspecialchars($c_phone) : (!empty($c_ip) ? htmlspecialchars($c_ip) : 'Visitante'));
+                            $search_keywords = strtolower($ci['country'] . ' ' . $ci['city'] . ' ' . $c_name . ' ' . $c_phone . ' ' . $c_ip . ' ' . $ci['_bot_name'] . ' ' . $last_msg);
+                        ?>
+                            <a href="?tab=analytics&filter_bot=<?php echo urlencode($filter_bot); ?>&filter_channel=<?php echo urlencode($filter_channel); ?>&sess=<?php echo urlencode($ci['_session_id']); ?>" 
+                               class="chat-conv-item <?php echo $is_current ? 'active' : ''; ?>"
+                               data-keywords="<?php echo htmlspecialchars($search_keywords); ?>">
+                                
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                                    <div style="display:flex; align-items:center; gap:6px;">
+                                        <span style="font-size:16px;"><?php echo $c_flag; ?></span>
+                                        <strong style="font-size:13px; color:#0f172a;"><?php echo htmlspecialchars($c_country); ?></strong>
+                                        <?php if (!empty($c_city)): ?>
+                                            <span style="font-size:11.5px; color:#64748b;">(<?php echo htmlspecialchars($c_city); ?>)</span>
+                                        <?php endif; ?>
+                                    </div>
+                                    <span style="font-size:11px; color:#94a3b8;"><?php echo $last_time; ?></span>
+                                </div>
+
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                    <div style="font-size:13px; font-weight:600; color:#1e293b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:210px;">
+                                        <?php echo $title_display; ?>
+                                    </div>
+                                    <span class="badge" style="background:<?php echo $c_channel === 'whatsapp' ? '#dcfce7' : '#dbeafe'; ?>; color:<?php echo $c_channel === 'whatsapp' ? '#166534' : '#1e40af'; ?>; font-size:10.5px; padding:2px 6px;">
+                                        <?php echo $c_channel === 'whatsapp' ? '📱 WA' : '🌐 Web'; ?>
+                                    </span>
+                                </div>
+
+                                <div style="font-size:12px; color:#64748b; line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                                    <?php echo htmlspecialchars($last_msg_short); ?>
+                                </div>
+
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px; font-size:11px; color:#94a3b8;">
+                                    <span>Bot: <strong><?php echo htmlspecialchars($ci['_bot_name']); ?></strong></span>
+                                    <span><?php echo count($c_msgs); ?> msgs</span>
+                                </div>
+                            </a>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+
+                <!-- COLUMNA DERECHA: VISOR DE CONVERSACIÓN -->
+                <div class="chat-view-pane">
+                    <?php if ($active_conv): 
+                        $ac_flag = !empty($active_conv['flag']) ? $active_conv['flag'] : '🌐';
+                        $ac_country = !empty($active_conv['country']) ? $active_conv['country'] : 'Desconocido';
+                        $ac_city = !empty($active_conv['city']) ? $active_conv['city'] : '';
+                        $ac_ip = $active_conv['ip'] ?? '';
+                        $ac_phone = $active_conv['user_phone'] ?? '';
+                        $ac_name = $active_conv['user_name'] ?? '';
+                        $ac_channel = $active_conv['channel'] ?? 'web';
+                        $ac_msgs = $active_conv['messages'] ?? [];
+                    ?>
+                        <!-- HEADER DEL CHAT -->
+                        <div class="chat-view-header">
+                            <div style="display:flex; align-items:center; gap:12px;">
+                                <div style="font-size:32px;"><?php echo $ac_flag; ?></div>
+                                <div>
+                                    <div style="display:flex; align-items:center; gap:8px;">
+                                        <h3 style="margin:0; font-size:16px; color:#0f172a;">
+                                            <?php echo !empty($ac_name) ? htmlspecialchars($ac_name) : (!empty($ac_phone) ? htmlspecialchars($ac_phone) : 'Visitante'); ?>
+                                        </h3>
+                                        <span class="badge" style="background:<?php echo $ac_channel === 'whatsapp' ? '#dcfce7' : '#dbeafe'; ?>; color:<?php echo $ac_channel === 'whatsapp' ? '#166534' : '#1e40af'; ?>; font-size:11px;">
+                                            <?php echo $ac_channel === 'whatsapp' ? '📱 WhatsApp' : '🌐 Web Widget'; ?>
+                                        </span>
+                                    </div>
+                                    <div style="font-size:12px; color:#64748b; margin-top:2px;">
+                                        📍 <strong><?php echo htmlspecialchars($ac_country); ?></strong> <?php echo !empty($ac_city) ? '• ' . htmlspecialchars($ac_city) : ''; ?>
+                                        <?php if (!empty($ac_ip)): ?> • IP: <code><?php echo htmlspecialchars($ac_ip); ?></code><?php endif; ?>
+                                        <?php if (!empty($ac_phone)): ?> • Tel: <strong><?php echo htmlspecialchars($ac_phone); ?></strong><?php endif; ?>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="text-align:right;">
+                                <span class="badge badge-id">Bot: #<?php echo htmlspecialchars($active_conv['_bot_id']); ?></span>
+                                <div style="font-size:11.5px; color:#94a3b8; margin-top:4px;">
+                                    Iniciado: <?php echo date('d/m/Y H:i', strtotime($active_conv['started_at'])); ?>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- MENSAJES DEL CHAT (BURBUJAS) -->
+                        <div class="chat-view-messages" id="chatMessagesContainer">
+                            <?php if (empty($ac_msgs)): ?>
+                                <div style="text-align:center; color:#94a3b8; margin:auto; font-size:13.5px;">
+                                    Esta conversación no tiene mensajes registrados.
+                                </div>
+                            <?php else: ?>
+                                <?php foreach ($ac_msgs as $m): 
+                                    $is_user = ($m['sender'] === 'user');
+                                    $m_time = $m['time'] ?? '';
+                                ?>
+                                    <div class="chat-bubble-row <?php echo $is_user ? 'user' : 'bot'; ?>">
+                                        <div class="chat-msg-bubble">
+                                            <?php echo nl2br(htmlspecialchars($m['text'])); ?>
+                                        </div>
+                                        <div class="chat-msg-meta">
+                                            <?php echo $is_user ? 'Visitante' : '🤖 ' . htmlspecialchars($active_conv['_bot_name']); ?> • <?php echo htmlspecialchars($m_time); ?>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </div>
+
+                    <?php else: ?>
+                        <div style="margin:auto; text-align:center; color:#94a3b8; padding:30px;">
+                            Selecciona una conversación a la izquierda para leer la transcripción completa.
+                        </div>
+                    <?php endif; ?>
+                </div>
+
+            </div>
+        <?php endif; ?>
+
+    </div>
+    <?php endif; // Fin if active_tab === 'analytics' ?>
 
     <!-- JAVASCRIPT DEL BUSCADOR Y ACORDEÓN -->
     <script>
@@ -1570,6 +2017,33 @@ $base_url = get_system_base_url();
                 chatArea.appendChild(errBubble);
             }
         }
+
+        function filterConversationsList() {
+            const input = document.getElementById('convSearchInput');
+            if (!input) return;
+            const q = input.value.trim().toLowerCase();
+            const items = document.querySelectorAll('.chat-conv-item');
+            let visibleCount = 0;
+            items.forEach(item => {
+                const kw = item.getAttribute('data-keywords') || '';
+                if (!q || kw.includes(q)) {
+                    item.style.display = 'block';
+                    visibleCount++;
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+            const counter = document.getElementById('convsListCounter');
+            if (counter) counter.innerText = `Mostrando ${visibleCount} de ${items.length} conversaciones`;
+        }
+
+        // Auto-scroll del visor de chat al final de los mensajes
+        window.addEventListener('DOMContentLoaded', () => {
+            const msgBox = document.getElementById('chatMessagesContainer');
+            if (msgBox) {
+                msgBox.scrollTop = msgBox.scrollHeight;
+            }
+        });
     </script>
 
 <?php endif; ?>

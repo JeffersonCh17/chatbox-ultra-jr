@@ -2,6 +2,8 @@
 data.php
 whatsapp_data.php
 leads.json
+conversations.json
+ip_cache.json
 whatsapp_bot_echoes.json
 whatsapp_debug.log
 *.log

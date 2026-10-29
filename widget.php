@@ -361,6 +361,17 @@ $is_camouflaged = ($btn_design === 'camouflaged');
     let userHasStarted = false;
     let qrRendered = false;
 
+    let clientSessionId = '';
+    try {
+        clientSessionId = localStorage.getItem('gemini_sess_' + botId);
+        if (!clientSessionId) {
+            clientSessionId = 'sess_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+            localStorage.setItem('gemini_sess_' + botId, clientSessionId);
+        }
+    } catch(e) {
+        clientSessionId = 'sess_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+    }
+
     if (isFullscreen) {
         if (!requireForm) {
             userHasStarted = true;
@@ -473,6 +484,7 @@ $is_camouflaged = ($btn_design === 'camouflaged');
                 body: JSON.stringify({
                     action: 'save_lead',
                     bot_id: botId,
+                    session_id: clientSessionId,
                     name: name,
                     phone: phone
                 })
@@ -521,7 +533,7 @@ $is_camouflaged = ($btn_design === 'camouflaged');
             const response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text, history: chatHistory, bot_id: botId })
+                body: JSON.stringify({ message: text, history: chatHistory, bot_id: botId, session_id: clientSessionId })
             });
             const data = await response.json();
             messages.removeChild(typingDiv);

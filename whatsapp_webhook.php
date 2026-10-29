@@ -250,6 +250,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // 2. PROCESAR MENSAJE CON EL MOTOR (Menú anidado o Gemini Multi-Key)
     $reply_text = process_wa_incoming_message($instance, $sender_phone, $incoming_text);
     
+    // Registrar conversación e interacción para métricas y visor de chats
+    if (function_exists('save_chat_interaction')) {
+        save_chat_interaction($instance_id, $sender_phone, $incoming_text, $reply_text ?? '', 'whatsapp', [
+            'user_name' => $sender_name,
+            'user_phone' => $sender_phone
+        ]);
+    }
+    
     // 3. ENVIAR RESPUESTA SI CORRESPONDE
     if (!empty($reply_text)) {
         // Si es prueba desde el simulador web, devolver en la respuesta HTTP

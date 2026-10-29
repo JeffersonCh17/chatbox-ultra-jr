@@ -22,6 +22,7 @@ if (!isset($settings['bots'][$bot_id])) {
 }
 
 $bot = $settings['bots'][$bot_id];
+$session_id = trim($input['session_id'] ?? '');
 
 // ========================================================
 // 1. RECEPTOR DE LEADS Y REENVÍO A WEBHOOK / PANELES EXTERNOS
@@ -32,6 +33,11 @@ if (isset($input['action']) && $input['action'] === 'save_lead') {
     
     if (!empty($name) || !empty($phone)) {
         $lead = save_lead($bot_id, $name, $phone);
+        
+        // Registrar en historial de la conversación
+        if (function_exists('save_chat_interaction') && !empty($session_id)) {
+            save_chat_interaction($bot_id, $session_id, "👤 Contacto: $name ($phone)", "Lead capturado", 'web', ['user_name' => $name, 'user_phone' => $phone]);
+        }
         
         // Reenvío inmediato a Webhook externo (n8n, CRM, LeadsEvolution, etc.)
         if (!empty($bot['webhook_url'])) {
@@ -174,6 +180,11 @@ $gemini_result = call_gemini_multikey($api_key, $model, $payload, $bot_id);
 if ($gemini_result['success']) {
     $text = $gemini_result['text'];
     
+    // Registrar conversación con geolocalización
+    if (function_exists('save_chat_interaction')) {
+        save_chat_interaction($bot_id, $session_id, $user_msg, $text, 'web');
+    }
+    
     // Parse Markdown links to Purple buttons
     $text = preg_replace('/\[(.*?)\]\((.*?)\)/', '<a href="$2" target="_blank" class="gemini-btn-link">$1</a>', $text);
     // Parse Bold
@@ -190,6 +201,12 @@ if ($gemini_result['success']) {
     
     $fallback_html = preg_replace('/\[(.*?)\]\((.*?)\)/', '<a href="$2" target="_blank" class="gemini-btn-link">$1</a>', $fallback_msg);
     $fallback_html = nl2br($fallback_html);
+    
+    // Registrar también la interacción de fallback
+    if (function_exists('save_chat_interaction')) {
+        save_chat_interaction($bot_id, $session_id, $user_msg, $fallback_html, 'web');
+    }
+    
     echo json_encode(['reply' => $fallback_html]);
     exit;
 }
