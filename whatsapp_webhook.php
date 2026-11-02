@@ -59,8 +59,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     if (!$instance) {
-        http_response_code(400);
-        echo json_encode(['error' => 'Instancia de WhatsApp no encontrada o ID ausente.']);
+        http_response_code(200);
+        echo json_encode(['status' => 'ignored', 'message' => 'Instancia de WhatsApp no encontrada o eliminada. Cero tokens consumidos.']);
+        exit;
+    }
+    
+    // Si el Bot de este número está desactivado o pausado desde el panel, rechazar de inmediato (0 TOKENS)
+    $is_active = $instance['is_active'] ?? true;
+    $is_paused = !empty($instance['is_paused']);
+    if (!$is_active || $is_paused) {
+        log_wa_debug_event($instance_id, '', '', 'BOT_DESACTIVADO', 'Instancia desactivada o en pausa. Mensaje rechazado de inmediato. Cero tokens consumidos.');
+        http_response_code(200);
+        echo json_encode(['status' => 'bot_deactivated_or_paused', 'message' => 'El bot de WhatsApp está desactivado o pausado. 0 tokens consumidos.']);
         exit;
     }
     
@@ -241,9 +251,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     // Si el Bot de este número está desactivado/pausado desde el panel
     $is_active = $instance['is_active'] ?? true;
-    if (!$is_active && !isset($data['test_phone'])) {
-        log_wa_debug_event($instance_id, $sender_phone, $incoming_text, 'BOT_PAUSADO', 'Bot desactivado en panel');
-        echo json_encode(['status' => 'bot_paused_by_admin', 'message' => 'El bot está desactivado temporalmente para este número.']);
+    $is_paused = !empty($instance['is_paused']);
+    if ((!$is_active || $is_paused) && !isset($data['test_phone'])) {
+        log_wa_debug_event($instance_id, $sender_phone, $incoming_text, 'BOT_PAUSADO', 'Bot desactivado o pausado en panel');
+        echo json_encode(['status' => 'bot_paused_by_admin', 'message' => 'El bot está desactivado temporalmente para este número. 0 tokens consumidos.']);
         exit;
     }
     

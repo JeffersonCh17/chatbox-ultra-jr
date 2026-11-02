@@ -87,6 +87,13 @@ function toggle_wa_contact_human_mode($instance_id, $phone) {
 
 // Procesador central de Mensaje Entrante para WhatsApp
 function process_wa_incoming_message($instance, $phone, $incoming_text) {
+    // 0. Si la instancia está inactiva o pausada, retornar null de inmediato (CERO tokens consumidos)
+    $is_active = $instance['is_active'] ?? true;
+    $is_paused = !empty($instance['is_paused']);
+    if (!$is_active || $is_paused) {
+        return null;
+    }
+
     $instance_id = $instance['id'];
     $session = get_wa_session($instance_id, $phone);
     $clean_input = wa_clean_text($incoming_text);
@@ -251,7 +258,7 @@ function process_wa_incoming_message($instance, $phone, $incoming_text) {
         ]
     ];
     
-    $gemini_result = call_gemini_multikey($api_keys, $model, $payload, 'wa_' . $instance_id);
+    $gemini_result = call_gemini_multikey($api_keys, $model, $payload, $instance_id);
     
     if ($gemini_result['success']) {
         $reply = $gemini_result['text'];

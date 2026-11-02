@@ -291,19 +291,19 @@ if (isset($_SESSION['logged_in']) && isset($_POST['update_wa_instance'])) {
 
 // Alternar Bot Activo / Pausado para una Instancia de WhatsApp
 if (isset($_SESSION['logged_in']) && isset($_GET['toggle_wa_active'])) {
-    $wa_id = $_GET['toggle_wa_active'];
+    $wa_id = preg_replace('/[^a-zA-Z0-9_]/', '', $_GET['toggle_wa_active']);
     if (isset($wa_settings['instances'][$wa_id])) {
         $cur = $wa_settings['instances'][$wa_id]['is_active'] ?? true;
         $wa_settings['instances'][$wa_id]['is_active'] = !$cur;
         save_wa_settings($wa_settings);
-        header("Location: admin.php?tab=whatsapp&opened_wa=" . urlencode($wa_id));
+        header("Location: admin.php?tab=whatsapp&success=wa_toggled&opened_wa=" . urlencode($wa_id));
         exit;
     }
 }
 
 // Alternar Modo Humano (Pausar/Reanudar IA) para un contacto específico
 if (isset($_SESSION['logged_in']) && isset($_GET['toggle_wa_contact']) && isset($_GET['phone'])) {
-    $wa_id = $_GET['toggle_wa_contact'];
+    $wa_id = preg_replace('/[^a-zA-Z0-9_]/', '', $_GET['toggle_wa_contact']);
     $phone = $_GET['phone'];
     require_once __DIR__ . '/whatsapp_engine.php';
     toggle_wa_contact_human_mode($wa_id, $phone);
@@ -313,14 +313,22 @@ if (isset($_SESSION['logged_in']) && isset($_GET['toggle_wa_contact']) && isset(
 
 // Eliminar Instancia WhatsApp
 if (isset($_SESSION['logged_in']) && isset($_GET['delete_wa'])) {
-    $wa_id = $_GET['delete_wa'];
+    $wa_id = preg_replace('/[^a-zA-Z0-9_]/', '', $_GET['delete_wa']);
     if (isset($wa_settings['instances'][$wa_id])) {
         unset($wa_settings['instances'][$wa_id]);
         unset($wa_settings['errors'][$wa_id]);
         unset($wa_settings['sessions'][$wa_id]);
         clear_bot_leads($wa_id);
         save_wa_settings($wa_settings);
-        header("Location: admin.php?tab=whatsapp");
+        
+        // También limpiar conversaciones asociadas si existen
+        $convs = get_conversations();
+        if (isset($convs[$wa_id])) {
+            unset($convs[$wa_id]);
+            save_conversations($convs);
+        }
+        
+        header("Location: admin.php?tab=whatsapp&success=wa_deleted");
         exit;
     }
 }
@@ -340,6 +348,8 @@ if ($action_success === 'created') $success = "¡Chat Web creado exitosamente!";
 if ($action_success === 'updated') $success = "¡Configuración de Chat Web actualizada!";
 if ($action_success === 'wa_created') $success = "¡Número / Instancia de WhatsApp creada exitosamente!";
 if ($action_success === 'wa_updated') $success = "¡Configuración de WhatsApp actualizada exitosamente!";
+if ($action_success === 'wa_toggled') $success = "¡Estado de WhatsApp actualizado exitosamente!";
+if ($action_success === 'wa_deleted') $success = "¡Instancia de WhatsApp eliminada correctamente del sistema!";
 if ($action_success === 'convs_cleared') $success = "¡Historial de conversaciones vaciado exitosamente!";
 
 $base_url = get_system_base_url();
@@ -1147,8 +1157,11 @@ $base_url = get_system_base_url();
                                     <?php if ($has_wa_err): ?>
                                         <span class="badge badge-err">⚠️ Error Reciente</span>
                                     <?php endif; ?>
-                                    <a href="?tab=whatsapp&toggle_wa_active=<?php echo $wa_id; ?>" onclick="event.stopPropagation();" class="btn-sm" style="background:<?php echo $is_wa_active ? '#fee2e2' : '#dcfce7'; ?>; color:<?php echo $is_wa_active ? '#991b1b' : '#166534'; ?>; text-decoration:none; margin-left:8px; padding:3px 8px; font-weight:600;">
+                                    <a href="?tab=whatsapp&toggle_wa_active=<?php echo $wa_id; ?>" onclick="event.stopPropagation();" class="btn-sm" style="background:<?php echo $is_wa_active ? '#fee2e2' : '#dcfce7'; ?>; color:<?php echo $is_wa_active ? '#991b1b' : '#166534'; ?>; text-decoration:none; margin-left:8px; padding:4px 10px; font-weight:700; border-radius:6px;" title="<?php echo $is_wa_active ? 'Desactivar bot para suspender respuestas automáticas y no consumir tokens' : 'Activar respuestas automáticas'; ?>">
                                         <?php echo $is_wa_active ? '⏸️ Desactivar' : '▶️ Activar'; ?>
+                                    </a>
+                                    <a href="?tab=whatsapp&delete_wa=<?php echo $wa_id; ?>" onclick="event.stopPropagation(); return confirm('¿Seguro que deseas eliminar permanentemente este WhatsApp (<?php echo htmlspecialchars(addslashes($wa['name'])); ?>)?\n\nEsta acción borrará la configuración del número y garantizará que no consuma ningún token.');" class="btn-sm" style="background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; text-decoration:none; margin-left:4px; padding:4px 10px; font-weight:700; border-radius:6px;" title="Eliminar este número de WhatsApp del sistema">
+                                        🗑️ Eliminar
                                     </a>
                                 </div>
                                 <div class="bot-toggle-btn" style="color:#16a34a;">
@@ -1423,8 +1436,8 @@ $base_url = get_system_base_url();
 
                                     <div style="display: flex; gap: 10px; margin-top: 20px;">
                                         <button type="submit" name="update_wa_instance" style="flex-grow:1; background:#16a34a;">💾 Guardar Cambios WhatsApp</button>
-                                        <a href="?tab=whatsapp&delete_wa=<?php echo $wa_id; ?>" onclick="return confirm('¿Seguro que deseas eliminar esta instancia de WhatsApp?');" style="text-decoration: none;">
-                                            <button type="button" class="btn-danger">🗑️ Borrar Número</button>
+                                        <a href="?tab=whatsapp&delete_wa=<?php echo $wa_id; ?>" onclick="return confirm('¿Seguro que deseas eliminar permanentemente esta instancia de WhatsApp (<?php echo htmlspecialchars(addslashes($wa['name'])); ?>)?\n\nEsta acción liberará la configuración y garantizará que no consuma ningún token.');" style="text-decoration: none;">
+                                            <button type="button" class="btn-danger" style="background:#dc2626; padding:10px 18px; font-weight:700;">🗑️ Borrar Número / Instancia</button>
                                         </a>
                                     </div>
                                 </form>
