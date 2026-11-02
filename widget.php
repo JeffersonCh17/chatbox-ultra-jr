@@ -201,6 +201,9 @@ $is_camouflaged = ($btn_design === 'camouflaged');
         .gemini-msg.user { background: ${primaryColor}; color: white; align-self: flex-end; border-bottom-right-radius: 4px; }
         .gemini-msg.bot { background: white; color: #1e293b; align-self: flex-start; border-bottom-left-radius: 4px; border: 1px solid #e2e8f0; }
         .gemini-msg.error { background: #fee2e2; color: #991b1b; align-self: flex-start; border: 1px solid #f87171; border-bottom-left-radius: 4px; }
+        .gemini-msg.agent { background: #f0fdf4; color: #14532d; align-self: flex-start; border-bottom-left-radius: 4px; border: 1px solid #86efac; box-shadow: 0 2px 6px rgba(22, 101, 52, 0.08); }
+        .gemini-msg.system-notice { background: #f8fafc; color: #64748b; align-self: center; border: 1px dashed #cbd5e1; font-size: 13px; font-style: italic; border-radius: 12px; padding: 8px 14px; text-align: center; }
+        .gemini-agent-tag { display: inline-block; font-size: 11px; font-weight: 700; color: #166534; background: #dcfce7; padding: 2px 8px; border-radius: 10px; margin-bottom: 6px; }
         
         /* BOTONES IA Y ENLACES */
         .gemini-btn-link {
@@ -372,6 +375,8 @@ $is_camouflaged = ($btn_design === 'camouflaged');
         clientSessionId = 'sess_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
     }
 
+    let currentMsgCount = 0;
+
     if (isFullscreen) {
         if (!requireForm) {
             userHasStarted = true;
@@ -540,6 +545,9 @@ $is_camouflaged = ($btn_design === 'camouflaged');
 
             if (data.error) {
                 addMessage('⚠️ ' + data.error, 'error');
+            } else if (data.status === 'paused') {
+                addMessage(data.notice || '👤 Tu mensaje fue recibido. Un asesor humano te responderá en breve.', 'system-notice');
+                chatHistory.push({ role: 'user', text: text });
             } else {
                 addMessage(data.reply, 'bot');
                 chatHistory.push({ role: 'user', text: text });
@@ -552,6 +560,66 @@ $is_camouflaged = ($btn_design === 'camouflaged');
     }
     sendBtn.addEventListener('click', sendMessage);
     input.addEventListener('keypress', function(e) { if (e.key === 'Enter') sendMessage(); });
+
+    // SONIDO Y POLLING EN VIVO PARA MENSAJES DE ASESOR HUMANO
+    function playVisitorChime() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15);
+            gain.gain.setValueAtTime(0.2, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.35);
+        } catch(e) {}
+    }
+
+    let isPollingRunning = false;
+    async function pollAgentMessages() {
+        if (!userHasStarted && !isFullscreen) return;
+        if (isPollingRunning) return;
+        isPollingRunning = true;
+        try {
+            const res = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'poll',
+                    bot_id: botId,
+                    session_id: clientSessionId,
+                    last_count: currentMsgCount
+                })
+            });
+            const data = await res.json();
+            if (data.new_messages && data.new_messages.length > 0) {
+                let hasAgentMsg = false;
+                data.new_messages.forEach(m => {
+                    if (m.sender === 'agent') {
+                        let cleanText = m.text.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" class="gemini-btn-link">$1</a>');
+                        cleanText = cleanText.replace(/\n/g, '<br>');
+                        addMessage('<span class="gemini-agent-tag">👤 Asesor Humano</span><div>' + cleanText + '</div>', 'agent');
+                        chatHistory.push({ role: 'model', text: m.text });
+                        hasAgentMsg = true;
+                    }
+                });
+                currentMsgCount = data.total_messages;
+                if (hasAgentMsg) {
+                    playVisitorChime();
+                }
+            }
+        } catch(e) {
+        } finally {
+            isPollingRunning = false;
+        }
+    }
+
+    // Comprobar mensajes del asesor cada 2.8 segundos
+    setInterval(pollAgentMessages, 2800);
     } // Fin initGeminiChatWidget
 
     if (document.readyState === 'loading') {

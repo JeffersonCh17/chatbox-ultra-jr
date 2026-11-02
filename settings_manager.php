@@ -369,11 +369,16 @@ function save_chat_interaction($bot_id, $session_id, $user_msg, $bot_reply, $cha
             'country_code' => $geo['code'],
             'city' => $geo['city'] ?? '',
             'flag' => $geo['flag'],
+            'is_paused' => false,
             'messages_count' => 0,
             'user_name' => $extra['user_name'] ?? '',
             'user_phone' => $extra['user_phone'] ?? ($channel === 'whatsapp' ? $session_id : ''),
             'messages' => []
         ];
+    }
+    
+    if (!isset($convs[$bot_id][$sess_key]['is_paused'])) {
+        $convs[$bot_id][$sess_key]['is_paused'] = false;
     }
     
     $convs[$bot_id][$sess_key]['last_activity'] = date('Y-m-d H:i:s');
@@ -422,4 +427,170 @@ function clear_bot_conversations($bot_id) {
         unset($convs[$bot_id]);
         @file_put_contents($file, json_encode($convs, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
     }
+}
+
+// ==========================================
+// CONTROL HUMANO, CLIENT PORTAL Y PAUSAS
+// ==========================================
+
+function get_bot_or_instance($id) {
+    if (empty($id)) return null;
+    $settings = get_settings();
+    if (isset($settings['bots'][$id])) {
+        $bot = $settings['bots'][$id];
+        $bot['id'] = $id;
+        $bot['channel'] = 'web';
+        return $bot;
+    }
+    $wa_settings = get_wa_settings();
+    if (isset($wa_settings['instances'][$id])) {
+        $instance = $wa_settings['instances'][$id];
+        $instance['id'] = $id;
+        $instance['channel'] = 'whatsapp';
+        return $instance;
+    }
+    return null;
+}
+
+function verify_client_password($bot_id, $input_password) {
+    if (empty($input_password)) return false;
+    $bot = get_bot_or_instance($bot_id);
+    if (!$bot) return false;
+    $expected = trim($bot['client_password'] ?? '');
+    if ($expected === '') return false;
+    return (string)$input_password === (string)$expected;
+}
+
+function is_session_or_bot_paused($bot_id, $session_id = '') {
+    $bot = get_bot_or_instance($bot_id);
+    if ($bot && !empty($bot['is_paused'])) {
+        return true;
+    }
+    if (!empty($session_id)) {
+        $convs = get_conversations();
+        $sess_key = preg_replace('/[^a-zA-Z0-9_\-\+]/', '', $session_id);
+        if (isset($convs[$bot_id][$sess_key]['is_paused'])) {
+            return (bool)$convs[$bot_id][$sess_key]['is_paused'];
+        }
+        // Para WhatsApp, verificar también human_mode en sessions
+        $wa_settings = get_wa_settings();
+        if (isset($wa_settings['sessions'][$bot_id][$session_id]['human_mode'])) {
+            return (bool)$wa_settings['sessions'][$bot_id][$session_id]['human_mode'];
+        }
+    }
+    return false;
+}
+
+function set_session_pause_status($bot_id, $session_id, $is_paused) {
+    $file = __DIR__ . '/conversations.json';
+    $convs = get_conversations();
+    $sess_key = preg_replace('/[^a-zA-Z0-9_\-\+]/', '', $session_id);
+    
+    if (!isset($convs[$bot_id])) $convs[$bot_id] = [];
+    if (!isset($convs[$bot_id][$sess_key])) {
+        $convs[$bot_id][$sess_key] = [
+            'id' => $sess_key,
+            'started_at' => date('Y-m-d H:i:s'),
+            'last_activity' => date('Y-m-d H:i:s'),
+            'channel' => 'web',
+            'ip' => get_client_ip(),
+            'country' => 'Desconocido',
+            'city' => '',
+            'flag' => '🌐',
+            'is_paused' => (bool)$is_paused,
+            'messages_count' => 0,
+            'messages' => []
+        ];
+    } else {
+        $convs[$bot_id][$sess_key]['is_paused'] = (bool)$is_paused;
+        $convs[$bot_id][$sess_key]['last_activity'] = date('Y-m-d H:i:s');
+    }
+    
+    @file_put_contents($file, json_encode($convs, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+    
+    // Si es WhatsApp, sincronizar con human_mode
+    $bot = get_bot_or_instance($bot_id);
+    if ($bot && ($bot['channel'] ?? '') === 'whatsapp') {
+        $wa_settings = get_wa_settings();
+        if (!isset($wa_settings['sessions'])) $wa_settings['sessions'] = [];
+        if (!isset($wa_settings['sessions'][$bot_id])) $wa_settings['sessions'][$bot_id] = [];
+        if (!isset($wa_settings['sessions'][$bot_id][$session_id])) {
+            $wa_settings['sessions'][$bot_id][$session_id] = [
+                'current_code' => '',
+                'history' => [],
+                'human_mode' => (bool)$is_paused,
+                'last_interaction' => time()
+            ];
+        } else {
+            $wa_settings['sessions'][$bot_id][$session_id]['human_mode'] = (bool)$is_paused;
+        }
+        save_wa_settings($wa_settings);
+    }
+    
+    return (bool)$is_paused;
+}
+
+function set_bot_global_pause($bot_id, $is_paused) {
+    $settings = get_settings();
+    if (isset($settings['bots'][$bot_id])) {
+        $settings['bots'][$bot_id]['is_paused'] = (bool)$is_paused;
+        save_settings($settings);
+        return (bool)$is_paused;
+    }
+    $wa_settings = get_wa_settings();
+    if (isset($wa_settings['instances'][$bot_id])) {
+        $wa_settings['instances'][$bot_id]['is_paused'] = (bool)$is_paused;
+        save_wa_settings($wa_settings);
+        return (bool)$is_paused;
+    }
+    return false;
+}
+
+function add_agent_message_to_conversation($bot_id, $session_id, $message_text) {
+    if (empty($bot_id) || empty($session_id) || trim($message_text) === '') return false;
+    
+    $file = __DIR__ . '/conversations.json';
+    $convs = get_conversations();
+    $sess_key = preg_replace('/[^a-zA-Z0-9_\-\+]/', '', $session_id);
+    
+    if (!isset($convs[$bot_id])) $convs[$bot_id] = [];
+    if (!isset($convs[$bot_id][$sess_key])) {
+        $convs[$bot_id][$sess_key] = [
+            'id' => $sess_key,
+            'started_at' => date('Y-m-d H:i:s'),
+            'last_activity' => date('Y-m-d H:i:s'),
+            'channel' => 'web',
+            'ip' => get_client_ip(),
+            'country' => 'Desconocido',
+            'city' => '',
+            'flag' => '🌐',
+            'is_paused' => true,
+            'messages_count' => 0,
+            'messages' => []
+        ];
+    }
+    
+    $msg_item = [
+        'sender' => 'agent',
+        'text' => trim($message_text),
+        'time' => date('H:i'),
+        'date' => date('Y-m-d H:i:s')
+    ];
+    
+    $convs[$bot_id][$sess_key]['messages'][] = $msg_item;
+    $convs[$bot_id][$sess_key]['last_activity'] = date('Y-m-d H:i:s');
+    $convs[$bot_id][$sess_key]['messages_count'] = count($convs[$bot_id][$sess_key]['messages']);
+    // Pausar automáticamente la IA para este chat cuando el agente responde
+    $convs[$bot_id][$sess_key]['is_paused'] = true;
+    
+    @file_put_contents($file, json_encode($convs, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+    
+    // Si es WhatsApp, despachar el mensaje por WhatsApp al número del usuario
+    $bot = get_bot_or_instance($bot_id);
+    if ($bot && ($bot['channel'] ?? '') === 'whatsapp') {
+        require_once __DIR__ . '/whatsapp_engine.php';
+        send_wa_outgoing_message($bot, $session_id, trim($message_text));
+    }
+    
+    return $msg_item;
 }

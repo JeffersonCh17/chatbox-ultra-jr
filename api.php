@@ -1,7 +1,8 @@
 <?php
+session_start();
 header('Content-Type: application/json; charset=utf-8');
 header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: POST, OPTIONS");
+header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type");
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { exit(0); }
@@ -9,25 +10,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { exit(0); }
 require_once 'settings_manager.php';
 $settings = get_settings();
 
-$input = json_decode(file_get_contents('php://input'), true);
+// Soportar tanto payload JSON (fetch) como $_GET / $_POST
+$raw_input = @file_get_contents('php://input');
+$input = json_decode($raw_input, true) ?? [];
+if (empty($input)) {
+    $input = array_merge($_GET, $_POST);
+}
+
 if (!$input || empty($input['bot_id'])) {
-    echo json_encode(['error' => 'Datos inválidos.']);
+    echo json_encode(['error' => 'Datos inválidos o falta bot_id.']);
     exit;
 }
 
 $bot_id = preg_replace('/[^a-zA-Z0-9_]/', '', $input['bot_id']);
-if (!isset($settings['bots'][$bot_id])) {
-    echo json_encode(['error' => 'Chat no configurado.']);
+$bot = get_bot_or_instance($bot_id);
+
+if (!$bot) {
+    echo json_encode(['error' => 'Chat o bot no encontrado en el sistema.']);
     exit;
 }
 
-$bot = $settings['bots'][$bot_id];
 $session_id = trim($input['session_id'] ?? '');
+$action = $input['action'] ?? '';
+
+// Helper de autorización (Admin con sesión maestra o Cliente con sesión de su bot o clave)
+function is_authorized_for_bot($bot_id, $key = '') {
+    if (!empty($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
+        return true; // Admin global
+    }
+    if (!empty($_SESSION['client_auth_' . $bot_id])) {
+        return true; // Cliente logueado en client.php
+    }
+    if (!empty($key) && verify_client_password($bot_id, $key)) {
+        return true; // Clave de acceso directa
+    }
+    return false;
+}
 
 // ========================================================
 // 1. RECEPTOR DE LEADS Y REENVÍO A WEBHOOK / PANELES EXTERNOS
 // ========================================================
-if (isset($input['action']) && $input['action'] === 'save_lead') {
+if ($action === 'save_lead') {
     $name = trim($input['name'] ?? '');
     $phone = trim($input['phone'] ?? '');
     
@@ -39,7 +62,7 @@ if (isset($input['action']) && $input['action'] === 'save_lead') {
             save_chat_interaction($bot_id, $session_id, "👤 Contacto: $name ($phone)", "Lead capturado", 'web', ['user_name' => $name, 'user_phone' => $phone]);
         }
         
-        // Reenvío inmediato a Webhook externo (n8n, CRM, LeadsEvolution, etc.)
+        // Reenvío inmediato a Webhook externo (n8n, CRM, etc.)
         if (!empty($bot['webhook_url'])) {
             $webhook_url = trim($bot['webhook_url']);
             $ch_wh = curl_init();
@@ -72,10 +95,155 @@ if (isset($input['action']) && $input['action'] === 'save_lead') {
 }
 
 // ========================================================
-// 2. CONVERSACIÓN CON GEMINI
+// 2. POLLING EN TIEMPO REAL PARA EL WIDGET WEB
+// ========================================================
+if ($action === 'poll') {
+    $last_count = isset($input['last_count']) ? intval($input['last_count']) : 0;
+    $convs = get_conversations();
+    $sess_key = !empty($session_id) ? preg_replace('/[^a-zA-Z0-9_\-\+]/', '', $session_id) : '';
+    
+    $messages = [];
+    $is_paused = is_session_or_bot_paused($bot_id, $session_id);
+    
+    if (!empty($sess_key) && isset($convs[$bot_id][$sess_key])) {
+        $all_msgs = $convs[$bot_id][$sess_key]['messages'] ?? [];
+        $total_count = count($all_msgs);
+        
+        // Obtener solo mensajes nuevos no vistos
+        if ($last_count < $total_count) {
+            $messages = array_slice($all_msgs, $last_count);
+        }
+        
+        echo json_encode([
+            'status' => 'ok',
+            'is_paused' => $is_paused,
+            'total_messages' => $total_count,
+            'new_messages' => $messages
+        ]);
+        exit;
+    }
+    
+    echo json_encode([
+        'status' => 'ok',
+        'is_paused' => $is_paused,
+        'total_messages' => 0,
+        'new_messages' => []
+    ]);
+    exit;
+}
+
+// ========================================================
+// 3. ENVIAR MENSAJE HUMANO (CLIENTE O ADMIN)
+// ========================================================
+if ($action === 'send_agent_message') {
+    $auth_key = $input['key'] ?? '';
+    if (!is_authorized_for_bot($bot_id, $auth_key)) {
+        echo json_encode(['error' => 'No autorizado para enviar mensajes en este chat.']);
+        exit;
+    }
+    
+    $msg_text = trim($input['message'] ?? '');
+    if (empty($msg_text) || empty($session_id)) {
+        echo json_encode(['error' => 'Mensaje o sesión inválida.']);
+        exit;
+    }
+    
+    $saved_msg = add_agent_message_to_conversation($bot_id, $session_id, $msg_text);
+    if ($saved_msg) {
+        echo json_encode([
+            'status' => 'success',
+            'message' => $saved_msg,
+            'is_paused' => true
+        ]);
+        exit;
+    }
+    echo json_encode(['error' => 'No se pudo guardar el mensaje.']);
+    exit;
+}
+
+// ========================================================
+// 4. ALTERNAR O DEFINIR PAUSA / MODO HUMANO
+// ========================================================
+if ($action === 'toggle_pause') {
+    $auth_key = $input['key'] ?? '';
+    if (!is_authorized_for_bot($bot_id, $auth_key)) {
+        echo json_encode(['error' => 'No autorizado para modificar el estado del bot.']);
+        exit;
+    }
+    
+    $scope = $input['scope'] ?? 'session'; // 'session' o 'bot'
+    $force_status = isset($input['is_paused']) ? (bool)$input['is_paused'] : null;
+    
+    if ($scope === 'bot' || empty($session_id)) {
+        // Pausa global del bot
+        $cur = $bot['is_paused'] ?? false;
+        $new_st = ($force_status !== null) ? $force_status : !$cur;
+        set_bot_global_pause($bot_id, $new_st);
+        echo json_encode([
+            'status' => 'success',
+            'scope' => 'bot',
+            'is_paused' => $new_st
+        ]);
+        exit;
+    } else {
+        // Pausa de una sesión específica
+        $cur = is_session_or_bot_paused($bot_id, $session_id);
+        $new_st = ($force_status !== null) ? $force_status : !$cur;
+        set_session_pause_status($bot_id, $session_id, $new_st);
+        echo json_encode([
+            'status' => 'success',
+            'scope' => 'session',
+            'session_id' => $session_id,
+            'is_paused' => $new_st
+        ]);
+        exit;
+    }
+}
+
+// ========================================================
+// 5. OBTENER DETALLE DE CONVERSACIÓN (PARA CLIENT.PHP)
+// ========================================================
+if ($action === 'get_conversation') {
+    $auth_key = $input['key'] ?? '';
+    if (!is_authorized_for_bot($bot_id, $auth_key)) {
+        echo json_encode(['error' => 'No autorizado.']);
+        exit;
+    }
+    
+    $convs = get_conversations();
+    $sess_key = preg_replace('/[^a-zA-Z0-9_\-\+]/', '', $session_id);
+    if (isset($convs[$bot_id][$sess_key])) {
+        $c = $convs[$bot_id][$sess_key];
+        $c['is_paused'] = is_session_or_bot_paused($bot_id, $session_id);
+        echo json_encode(['status' => 'success', 'conversation' => $c]);
+        exit;
+    }
+    echo json_encode(['error' => 'Conversación no encontrada.']);
+    exit;
+}
+
+// ========================================================
+// 6. CONVERSACIÓN DEL VISITANTE (GEMINI O MODO HUMANO)
 // ========================================================
 if (empty($input['message'])) {
     echo json_encode(['error' => 'Mensaje vacío.']);
+    exit;
+}
+
+$user_msg = trim($input['message']);
+
+// VERIFICAR SI EL BOT O LA SESIÓN ESTÁN PAUSADOS (MODO HUMANO)
+if (is_session_or_bot_paused($bot_id, $session_id)) {
+    // Guardar el mensaje del visitante en el historial sin llamar a Gemini
+    if (function_exists('save_chat_interaction')) {
+        save_chat_interaction($bot_id, $session_id, $user_msg, '', 'web');
+    }
+    echo json_encode([
+        'status' => 'paused',
+        'is_paused' => true,
+        'reply' => null,
+        'notice' => 'Tu mensaje ha sido recibido por un asesor humano. En un momento te responderemos.'
+    ]);
     exit;
 }
 
@@ -83,7 +251,6 @@ $api_key = $bot['api_key'] ?? '';
 $model = !empty($bot['model']) ? $bot['model'] : 'gemini-3.5-flash';
 $system_prompt = $bot['prompt'] ?? '';
 $fallback_msg = $bot['fallback_msg'] ?? 'Error de conexión con IA.';
-$user_msg = $input['message'];
 $history = $input['history'] ?? [];
 
 // MANEJO DE PDF A GOOGLE (Vencimiento de 48h)
@@ -210,4 +377,3 @@ if ($gemini_result['success']) {
     echo json_encode(['reply' => $fallback_html]);
     exit;
 }
-

@@ -135,7 +135,9 @@ if (isset($_SESSION['logged_in']) && isset($_POST['create_bot'])) {
         'created_at' => date('Y-m-d H:i:s'),
         'model' => trim($_POST['bot_model']),
         'fallback_msg' => trim($_POST['fallback_msg']),
-        'quick_replies' => trim($_POST['quick_replies'])
+        'quick_replies' => trim($_POST['quick_replies']),
+        'client_password' => trim($_POST['client_password'] ?? ''),
+        'is_paused' => isset($_POST['is_paused'])
     ];
     
     if (isset($_FILES['bot_pdf']) && $_FILES['bot_pdf']['error'] === UPLOAD_ERR_OK) {
@@ -166,6 +168,8 @@ if (isset($_SESSION['logged_in']) && isset($_POST['update_bot'])) {
         $settings['bots'][$id]['model'] = trim($_POST['bot_model']);
         $settings['bots'][$id]['fallback_msg'] = trim($_POST['fallback_msg']);
         $settings['bots'][$id]['quick_replies'] = trim($_POST['quick_replies']);
+        $settings['bots'][$id]['client_password'] = trim($_POST['client_password'] ?? '');
+        $settings['bots'][$id]['is_paused'] = isset($_POST['is_paused']);
         
         if (empty($settings['bots'][$id]['created_at'])) {
             $settings['bots'][$id]['created_at'] = date('Y-m-d H:i:s');
@@ -246,6 +250,7 @@ if (isset($_SESSION['logged_in']) && isset($_POST['create_wa_instance'])) {
         'prompt' => trim($_POST['wa_prompt']),
         'fallback_msg' => trim($_POST['wa_fallback_msg']),
         'webhook_url' => trim($_POST['wa_webhook_url'] ?? ''),
+        'client_password' => trim($_POST['wa_client_password'] ?? ''),
         'is_active' => true,
         'created_at' => date('Y-m-d H:i:s')
     ];
@@ -275,6 +280,7 @@ if (isset($_SESSION['logged_in']) && isset($_POST['update_wa_instance'])) {
         $wa_settings['instances'][$wa_id]['prompt'] = trim($_POST['wa_prompt']);
         $wa_settings['instances'][$wa_id]['fallback_msg'] = trim($_POST['wa_fallback_msg']);
         $wa_settings['instances'][$wa_id]['webhook_url'] = trim($_POST['wa_webhook_url'] ?? '');
+        $wa_settings['instances'][$wa_id]['client_password'] = trim($_POST['wa_client_password'] ?? '');
         $wa_settings['instances'][$wa_id]['is_active'] = isset($_POST['wa_is_active']);
         
         save_wa_settings($wa_settings);
@@ -525,9 +531,11 @@ $base_url = get_system_base_url();
         .chat-view-messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
         .chat-bubble-row { display: flex; flex-direction: column; }
         .chat-bubble-row.user { align-items: flex-end; }
+        .chat-bubble-row.agent { align-items: flex-end; }
         .chat-bubble-row.bot { align-items: flex-start; }
         .chat-msg-bubble { max-width: 80%; padding: 10px 14px; border-radius: 12px; font-size: 13.5px; line-height: 1.5; word-break: break-word; white-space: pre-wrap; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
         .chat-bubble-row.user .chat-msg-bubble { background: #2563eb; color: #ffffff; border-bottom-right-radius: 2px; }
+        .chat-bubble-row.agent .chat-msg-bubble { background: #16a34a; color: #ffffff; border-bottom-right-radius: 2px; }
         .chat-bubble-row.bot .chat-msg-bubble { background: #ffffff; color: #1e293b; border: 1px solid #e2e8f0; border-bottom-left-radius: 2px; }
         .chat-msg-meta { font-size: 11px; color: #94a3b8; margin-top: 4px; padding: 0 4px; }
 
@@ -672,6 +680,13 @@ $base_url = get_system_base_url();
                     
                     <label>Mensaje Flotante / Tooltip:</label>
                     <input type="text" name="bot_tooltip" placeholder="¡Consulta aquí con nuestro asistente!">
+
+                    <label>Clave de Acceso para el Cliente (Opcional):</label>
+                    <div class="help-text">Define una clave para que tu cliente ingrese a ver sus métricas y pausar el chat:</div>
+                    <div style="display:flex; gap:8px; align-items:center; margin-bottom:14px;">
+                        <input type="text" name="client_password" id="new_bot_cp" placeholder="Ej: micliente2026" style="margin:0;">
+                        <button type="button" class="btn-sm" style="background:#16a34a; white-space:nowrap;" onclick="generateClientKey('new_bot_cp')">🎲 Generar</button>
+                    </div>
 
                     <button type="submit" name="create_bot" style="width: 100%; margin-top:10px;">Crear Chat</button>
                 </form>
@@ -933,6 +948,41 @@ $base_url = get_system_base_url();
                                     
                                     <label>Mensaje Flotante / Tooltip:</label>
                                     <input type="text" name="bot_tooltip" value="<?php echo htmlspecialchars($bot['tooltip'] ?? ''); ?>" placeholder="¡Tu asistente, consulta aquí!">
+
+                                    <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
+
+                                    <!-- SECCIÓN: ACCESO DEL CLIENTE Y CONTROL EN VIVO -->
+                                    <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:16px; margin:15px 0;">
+                                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                            <strong style="color:#166534; font-size:14px;">🔗 Enlace y Clave para tu Cliente (Métricas & Atencin en Vivo):</strong>
+                                            <span class="badge" style="background:#dcfce7; color:#166534;">Para tus Clientes</span>
+                                        </div>
+                                        <div class="help-text" style="color:#15803d; margin-bottom:12px;">
+                                            Comparte este enlace con tu cliente para que consulte sus métricas, lea las conversaciones en tiempo real, pause la IA y responda él mismo a los visitantes cuando lo desee.
+                                        </div>
+
+                                        <label style="color:#166534; font-weight:700;">Clave de Acceso para el Cliente:</label>
+                                        <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px;">
+                                            <input type="text" name="client_password" id="cp_<?php echo $id; ?>" value="<?php echo htmlspecialchars($bot['client_password'] ?? ''); ?>" placeholder="Ej: micliente2026" style="margin:0;">
+                                            <button type="button" class="btn-sm" style="background:#16a34a; white-space:nowrap;" onclick="generateClientKey('cp_<?php echo $id; ?>')">🎲 Generar Clave</button>
+                                        </div>
+
+                                        <label style="color:#166534; font-weight:700;">Enlace Directo del Panel del Cliente:</label>
+                                        <div class="code-box-wrapper" style="margin-bottom:10px;">
+                                            <code><?php echo $base_url . "/client.php?bot=" . $id; ?></code>
+                                            <button type="button" class="btn-copy" onclick="copyText('<?php echo $base_url . "/client.php?bot=" . $id; ?>', this)">Copiar Enlace</button>
+                                        </div>
+
+                                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-top:8px;">
+                                            <label class="checkbox-label" style="margin:0; font-size:13px; color:#166534; font-weight:700;">
+                                                <input type="checkbox" name="is_paused" value="1" <?php echo !empty($bot['is_paused']) ? 'checked' : ''; ?>>
+                                                ⏸️ Pausar IA de este chat globalmente (Modo Humano)
+                                            </label>
+                                            <a href="client.php?bot=<?php echo urlencode($id); ?>" target="_blank" class="fs-action-pill primary" style="background:#16a34a; border-color:#16a34a; font-size:12px;">
+                                                👁️ Abrir Panel del Cliente ➔
+                                            </a>
+                                        </div>
+                                    </div>
                                     
                                     <div style="display: flex; gap: 10px; margin-top: 20px;">
                                         <button type="submit" name="update_bot" style="flex-grow:1;">💾 Guardar Cambios</button>
@@ -1340,6 +1390,37 @@ $base_url = get_system_base_url();
                                     <label>Webhook Externo de Leads:</label>
                                     <input type="text" name="wa_webhook_url" value="<?php echo htmlspecialchars($wa['webhook_url'] ?? ''); ?>">
 
+                                    <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
+
+                                    <!-- SECCIÓN: ACCESO DEL CLIENTE Y CONTROL EN VIVO WHATSAPP -->
+                                    <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:16px; margin:15px 0;">
+                                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                            <strong style="color:#166534; font-size:14px;">🔗 Enlace y Clave para tu Cliente (WhatsApp):</strong>
+                                            <span class="badge" style="background:#dcfce7; color:#166534;">Para tus Clientes</span>
+                                        </div>
+                                        <div class="help-text" style="color:#15803d; margin-bottom:12px;">
+                                            Comparte este enlace con tu cliente para que consulte las conversaciones de WhatsApp, vea las estadísticas de este número y pueda intervenir.
+                                        </div>
+
+                                        <label style="color:#166534; font-weight:700;">Clave de Acceso para el Cliente:</label>
+                                        <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px;">
+                                            <input type="text" name="wa_client_password" id="wacp_<?php echo $wa_id; ?>" value="<?php echo htmlspecialchars($wa['client_password'] ?? ''); ?>" placeholder="Ej: micliente2026" style="margin:0;">
+                                            <button type="button" class="btn-sm" style="background:#16a34a; white-space:nowrap;" onclick="generateClientKey('wacp_<?php echo $wa_id; ?>')">🎲 Generar Clave</button>
+                                        </div>
+
+                                        <label style="color:#166534; font-weight:700;">Enlace Directo del Panel del Cliente:</label>
+                                        <div class="code-box-wrapper" style="margin-bottom:10px;">
+                                            <code><?php echo $base_url . "/client.php?bot=" . $wa_id; ?></code>
+                                            <button type="button" class="btn-copy" onclick="copyText('<?php echo $base_url . "/client.php?bot=" . $wa_id; ?>', this)">Copiar Enlace</button>
+                                        </div>
+
+                                        <div style="text-align:right; margin-top:8px;">
+                                            <a href="client.php?bot=<?php echo urlencode($wa_id); ?>" target="_blank" class="fs-action-pill primary" style="background:#16a34a; border-color:#16a34a; font-size:12px;">
+                                                👁️ Abrir Panel del Cliente ➔
+                                            </a>
+                                        </div>
+                                    </div>
+
                                     <div style="display: flex; gap: 10px; margin-top: 20px;">
                                         <button type="submit" name="update_wa_instance" style="flex-grow:1; background:#16a34a;">💾 Guardar Cambios WhatsApp</button>
                                         <a href="?tab=whatsapp&delete_wa=<?php echo $wa_id; ?>" onclick="return confirm('¿Seguro que deseas eliminar esta instancia de WhatsApp?');" style="text-decoration: none;">
@@ -1650,7 +1731,13 @@ $base_url = get_system_base_url();
                                     </div>
                                 </div>
                             </div>
-                            <div style="text-align:right;">
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <?php 
+                                $is_adm_p = is_session_or_bot_paused($active_conv['_bot_id'], $active_conv['_session_id']);
+                                ?>
+                                <button type="button" id="adminTogglePauseBtn" class="pill-btn <?php echo $is_adm_p ? 'pill-btn-resume' : 'pill-btn-pause'; ?>" style="font-size:11.5px; padding:5px 10px; cursor:pointer;" onclick="toggleAdminSessionPause('<?php echo htmlspecialchars($active_conv['_bot_id']); ?>', '<?php echo htmlspecialchars($active_conv['_session_id']); ?>')">
+                                    <?php echo $is_adm_p ? '▶️ Reanudar IA' : '⏸️ Pausar IA (Tomar Control)'; ?>
+                                </button>
                                 <span class="badge badge-id">Bot: #<?php echo htmlspecialchars($active_conv['_bot_id']); ?></span>
                                 <div style="font-size:11.5px; color:#94a3b8; margin-top:4px;">
                                     Iniciado: <?php echo date('d/m/Y H:i', strtotime($active_conv['started_at'])); ?>
@@ -1666,20 +1753,30 @@ $base_url = get_system_base_url();
                                 </div>
                             <?php else: ?>
                                 <?php foreach ($ac_msgs as $m): 
-                                    $is_user = ($m['sender'] === 'user');
+                                    $snd = $m['sender'] ?? 'user';
                                     $m_time = $m['time'] ?? '';
                                 ?>
-                                    <div class="chat-bubble-row <?php echo $is_user ? 'user' : 'bot'; ?>">
+                                    <div class="chat-bubble-row <?php echo $snd; ?>">
                                         <div class="chat-msg-bubble">
                                             <?php echo nl2br(htmlspecialchars($m['text'])); ?>
                                         </div>
                                         <div class="chat-msg-meta">
-                                            <?php echo $is_user ? 'Visitante' : '🤖 ' . htmlspecialchars($active_conv['_bot_name']); ?> • <?php echo htmlspecialchars($m_time); ?>
+                                            <?php 
+                                                if ($snd === 'agent') echo '👤 Tú (Asesor Humano)';
+                                                elseif ($snd === 'bot') echo '🤖 ' . htmlspecialchars($active_conv['_bot_name']);
+                                                else echo 'Visitante';
+                                            ?> • <?php echo htmlspecialchars($m_time); ?>
                                         </div>
                                     </div>
                                 <?php endforeach; ?>
                             <?php endif; ?>
                         </div>
+
+                        <!-- BARRA DE RESPUESTA EN VIVO DESDE ADMIN -->
+                        <form style="display:flex; gap:8px; padding:12px 16px; background:#fff; border-top:1px solid var(--border);" onsubmit="sendAdminLiveReply(event, '<?php echo htmlspecialchars($active_conv['_bot_id']); ?>', '<?php echo htmlspecialchars($active_conv['_session_id']); ?>')">
+                            <input type="text" id="adminReplyInput" placeholder="Escribe tu mensaje para responder al visitante en vivo..." style="flex:1; margin:0; padding:10px 14px; border:1px solid var(--border); border-radius:20px; font-size:13.5px;" autocomplete="off">
+                            <button type="submit" style="background:#16a34a; padding:10px 18px; border-radius:20px; font-size:13px; font-weight:700;">Enviar ➔</button>
+                        </form>
 
                     <?php else: ?>
                         <div style="margin:auto; text-align:center; color:#94a3b8; padding:30px;">
@@ -2044,6 +2141,83 @@ $base_url = get_system_base_url();
                 msgBox.scrollTop = msgBox.scrollHeight;
             }
         });
+
+        function generateClientKey(targetId) {
+            const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
+            let key = 'pass_';
+            for (let i = 0; i < 6; i++) {
+                key += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            const el = document.getElementById(targetId);
+            if (el) el.value = key;
+        }
+
+        async function toggleAdminSessionPause(botId, sessId) {
+            const btn = document.getElementById('adminTogglePauseBtn');
+            try {
+                const res = await fetch('api.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'toggle_pause',
+                        bot_id: botId,
+                        session_id: sessId,
+                        scope: 'session'
+                    })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    if (data.is_paused) {
+                        btn.className = 'pill-btn pill-btn-resume';
+                        btn.innerText = '▶️ Reanudar IA';
+                    } else {
+                        btn.className = 'pill-btn pill-btn-pause';
+                        btn.innerText = '⏸️ Pausar IA (Tomar Control)';
+                    }
+                }
+            } catch(e) {
+                alert('No se pudo cambiar el estado de pausa.');
+            }
+        }
+
+        async function sendAdminLiveReply(e, botId, sessId) {
+            e.preventDefault();
+            const input = document.getElementById('adminReplyInput');
+            const text = input.value.trim();
+            if (!text || !sessId) return;
+
+            input.value = '';
+
+            const container = document.getElementById('chatMessagesContainer');
+            const bubbleRow = document.createElement('div');
+            bubbleRow.className = 'chat-bubble-row agent';
+            bubbleRow.innerHTML = `
+                <div class="chat-msg-bubble">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</div>
+                <div class="chat-msg-meta">👤 Tú (Administrador) • Justo ahora</div>
+            `;
+            container.appendChild(bubbleRow);
+            container.scrollTop = container.scrollHeight;
+
+            try {
+                await fetch('api.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'send_agent_message',
+                        bot_id: botId,
+                        session_id: sessId,
+                        message: text
+                    })
+                });
+                const btn = document.getElementById('adminTogglePauseBtn');
+                if (btn) {
+                    btn.className = 'pill-btn pill-btn-resume';
+                    btn.innerText = '▶️ Reanudar IA';
+                }
+            } catch(e) {
+                alert('Error enviando mensaje.');
+            }
+        }
     </script>
 
 <?php endif; ?>

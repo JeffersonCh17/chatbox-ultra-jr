@@ -16,7 +16,9 @@ return [
             'created_at' => date('Y-m-d H:i:s'),
             'model' => 'gemini-3.5-flash',
             'fallback_msg' => 'En este momento nuestros servidores están saturados. Por favor intenta más tarde.',
-            'quick_replies' => "Quiero cotizar\nHorarios::De 8am a 5pm\n[WhatsApp](https://wa.me/)"
+            'quick_replies' => "Quiero cotizar\nHorarios::De 8am a 5pm\n[WhatsApp](https://wa.me/)",
+            'client_password' => 'demo123',
+            'is_paused' => false
         ]
     ],
     'errors' => []

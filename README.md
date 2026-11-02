@@ -31,13 +31,20 @@ Desarrollada en PHP nativo ultra liviano, compatible con cualquier servidor comp
 * **Monitor de Webhook en Vivo:** Visor de eventos entrantes y salientes en tiempo real para diagnóstico inmediato.
 * **Keepalive Automático (`keepalive.php`):** Script para tareas programadas (Cron) que mantiene despiertos contenedores gratuitos (ej. Render) 24/7.
 
+### 👥 Portal de Clientes y Control en Vivo (`client.php`)
+* **Enlace Único y Clave de Acceso por Chat:** Cada bot cuenta con su propio portal independiente (`client.php?bot=bot_id`) protegido por contraseña exclusiva para el cliente.
+* **Métricas y Analíticas Aisladas:** El cliente visualiza visitantes únicos, número de conversaciones, mensajes intercambiados y desglose geográfico por país con banderas emoji.
+* **Live Chat Takeover (Pausar y Responder en Vivo):** El cliente o administrador puede presionar **"Pausar IA"** en cualquier conversación. La IA de Gemini se detiene al instante y el asesor puede escribir mensajes en tiempo real directamente al visitante.
+* **Sincronización Bidireccional en Tiempo Real:** El widget del visitante recibe las respuestas del asesor humano con badge distintivo y alerta sonora; las respuestas del visitante aparecen al instante en la consola del asesor sin recargar la página.
+
 ---
 
 ## 📁 Estructura del Proyecto
 
 ```text
 ├── admin.php               # Panel de control maestro y configurador visual
-├── api.php                 # Endpoint receptor para el widget web
+├── client.php              # Portal de métricas y control humano en vivo para clientes
+├── api.php                 # Endpoint receptor para el widget web y sincronización en vivo
 ├── chat.php                # Interfaz completa de chat web a pantalla completa
 ├── keepalive.php           # Script para Cron Job de mantenimiento (Render Keepalive)
 ├── settings_manager.php    # Núcleo de rotación de claves y llamadas a Gemini API
