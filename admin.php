@@ -954,7 +954,7 @@ $base_url = get_system_base_url();
                                     <!-- SECCIÓN: ACCESO DEL CLIENTE Y CONTROL EN VIVO -->
                                     <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:16px; margin:15px 0;">
                                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                                            <strong style="color:#166534; font-size:14px;">🔗 Enlace y Clave para tu Cliente (Métricas & Atencin en Vivo):</strong>
+                                            <strong style="color:#166534; font-size:14px;">🔗 Enlace y Clave para tu Cliente (Métricas &amp; Atención en Vivo):</strong>
                                             <span class="badge" style="background:#dcfce7; color:#166534;">Para tus Clientes</span>
                                         </div>
                                         <div class="help-text" style="color:#15803d; margin-bottom:12px;">

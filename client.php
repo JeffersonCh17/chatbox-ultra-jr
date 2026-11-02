@@ -1,5 +1,6 @@
 <?php
 session_start();
+header('Content-Type: text/html; charset=UTF-8');
 require_once __DIR__ . '/settings_manager.php';
 $base_url = get_system_base_url();
 
@@ -9,29 +10,24 @@ if (empty($bot_id) && isset($_POST['bot_id'])) {
 }
 
 if (empty($bot_id)) {
-    die("<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Error</title><style>body{font-family:sans-serif;padding:40px;text-align:center;background:#f8fafc;color:#1e293b;}</style></head><body><h2>⚠️ Chat no especificado</h2><p>Debes acceder usando un enlace con el identificador del chat (ej: <code>client.php?bot=bot_xxxx</code>).</p></body></html>");
+    die("<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Error</title><style>body{font-family:sans-serif;padding:40px;text-align:center;background:#f8fafc;color:#1e293b;}</style></head><body><h2>&#9888;&#65039; Chat no especificado</h2><p>Debes acceder usando un enlace con el identificador del chat (ej: <code>client.php?bot=bot_xxxx</code>).</p></body></html>");
 }
 
 $bot = get_bot_or_instance($bot_id);
 if (!$bot) {
-    die("<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Error</title><style>body{font-family:sans-serif;padding:40px;text-align:center;background:#f8fafc;color:#1e293b;}</style></head><body><h2>❌ Chat no encontrado</h2><p>El bot solicitado no existe o fue eliminado.</p></body></html>");
+    die("<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Error</title><style>body{font-family:sans-serif;padding:40px;text-align:center;background:#f8fafc;color:#1e293b;}</style></head><body><h2>&#10060; Chat no encontrado</h2><p>El bot solicitado no existe o fue eliminado.</p></body></html>");
 }
 
 $bot_name = $bot['name'] ?? 'Mi Asistente';
 $c1 = !empty($bot['color']) ? $bot['color'] : '#2563eb';
 $c2 = !empty($bot['color2']) ? $bot['color2'] : '#9333ea';
-$client_pwd = $bot['client_password'] ?? '';
+$client_pwd = trim($bot['client_password'] ?? '');
 
-// CERRAR SESIÓN
+// CERRAR SESION
 if (isset($_GET['logout'])) {
     unset($_SESSION['client_auth_' . $bot_id]);
     header("Location: client.php?bot=" . urlencode($bot_id));
     exit;
-}
-
-// LOGIN AUTOMÁTICO POR URL SI SE PROVEE KEY VÁLIDA
-if (isset($_GET['key']) && !empty($client_pwd) && $_GET['key'] === $client_pwd) {
-    $_SESSION['client_auth_' . $bot_id] = true;
 }
 
 // PROCESAR FORMULARIO DE LOGIN
@@ -39,23 +35,18 @@ $login_error = '';
 if (isset($_POST['login_client'])) {
     $pwd_input = trim($_POST['password'] ?? '');
     if (empty($client_pwd)) {
-        $login_error = "El administrador aún no ha configurado una clave de acceso para este chat. Contacta a soporte.";
+        $login_error = "El administrador a&uacute;n no ha configurado una clave de acceso para este chat. Contacta al administrador.";
     } elseif ($pwd_input === $client_pwd) {
         $_SESSION['client_auth_' . $bot_id] = true;
         header("Location: client.php?bot=" . urlencode($bot_id));
         exit;
     } else {
-        $login_error = "Clave de acceso incorrecta. Inténtalo nuevamente.";
+        $login_error = "Clave de acceso incorrecta. Int&eacute;ntalo nuevamente.";
     }
 }
 
-// VERIFICAR AUTENTICACIÓN
+// VERIFICAR AUTENTICACION (SOLO LA SESION DEL CLIENTE ES VALIDA)
 $is_authenticated = !empty($_SESSION['client_auth_' . $bot_id]);
-
-// SI EL ADMIN ESTÁ LOGUEADO EN ADMIN.PHP, PUEDE VER DIRECTO EL PANEL DEL CLIENTE
-if (!empty($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
-    $is_authenticated = true;
-}
 
 // ACCIONES: EXPORTAR LEADS
 if ($is_authenticated && isset($_GET['export_leads'])) {
@@ -114,15 +105,6 @@ if ($is_authenticated && isset($_GET['toggle_bot_pause'])) {
     exit;
 }
 
-// ALTERNAR PAUSA DE UNA SESIÓN DESDE EL PANEL
-if ($is_authenticated && isset($_GET['toggle_sess_pause']) && isset($_GET['sess'])) {
-    $s_id = $_GET['sess'];
-    $cur = is_session_or_bot_paused($bot_id, $s_id);
-    set_session_pause_status($bot_id, $s_id, !$cur);
-    header("Location: client.php?bot=" . urlencode($bot_id) . "&tab=chats&sess=" . urlencode($s_id));
-    exit;
-}
-
 // CARGA DE DATOS PARA EL DASHBOARD
 $active_tab = $_GET['tab'] ?? 'metrics';
 $selected_sess_id = $_GET['sess'] ?? '';
@@ -133,7 +115,7 @@ $bot_convs = $all_convs[$bot_id] ?? [];
 $all_leads = get_leads();
 $bot_leads = $all_leads[$bot_id] ?? [];
 
-// CALCULAR MÉTRICAS
+// CALCULAR METRICAS
 $total_convs = count($bot_convs);
 $total_messages = 0;
 $unique_visitors = [];
@@ -161,7 +143,7 @@ uasort($countries, function($a, $b) {
     return $b['count'] <=> $a['count'];
 });
 
-// ORDENAR CONVERSACIONES POR ÚLTIMA ACTIVIDAD
+// ORDENAR CONVERSACIONES POR ULTIMA ACTIVIDAD
 $conv_list = [];
 foreach ($bot_convs as $s_id => $c) {
     $conv_list[] = array_merge($c, ['_session_id' => $s_id]);
@@ -170,7 +152,7 @@ usort($conv_list, function($a, $b) {
     return strtotime($b['last_activity'] ?? $b['started_at'] ?? '2000-01-01') <=> strtotime($a['last_activity'] ?? $a['started_at'] ?? '2000-01-01');
 });
 
-// SELECCIONAR CONVERSACIÓN ACTIVA
+// SELECCIONAR CONVERSACION ACTIVA
 $active_conv = null;
 if (!empty($selected_sess_id)) {
     foreach ($conv_list as $ci) {
@@ -236,7 +218,7 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
         .pill-btn-sec { background: #f1f5f9; color: #475569; border-color: #cbd5e1; }
         .pill-btn-sec:hover { background: #e2e8f0; }
 
-        /* TABS DE NAVEGACIÓN */
+        /* TABS DE NAVEGACION */
         .tabs-nav {
             max-width: 1200px; margin: 20px auto 0; padding: 0 20px;
             display: flex; gap: 8px; border-bottom: 2px solid var(--border);
@@ -281,7 +263,7 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
         .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
         .card-title { font-size: 16px; font-weight: 700; margin: 0; color: #0f172a; }
 
-        /* DISTRIBUCIÓN DE PAÍSES */
+        /* DISTRIBUCION DE PAISES */
         .country-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
         .country-chip {
             background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px;
@@ -374,7 +356,9 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
         .login-btn {
             width: 100%; padding: 13px; background: linear-gradient(135deg, var(--primary), var(--primary-end));
             color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer;
+            transition: opacity 0.2s;
         }
+        .login-btn:hover { opacity: 0.92; }
         .alert-box { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 15px; text-align: left; }
         .alert-box.err { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
     </style>
@@ -386,24 +370,24 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
     <!-- PANTALLA DE ACCESO PROTEGIDO (LOGIN)       -->
     <!-- ========================================== -->
     <div class="login-card">
-        <div class="bot-circle" style="margin: 0 auto 15px; width:64px; height:64px; font-size:28px;">💬</div>
+        <div class="bot-circle" style="margin: 0 auto 15px; width:64px; height:64px; font-size:28px;">&#128172;</div>
         <h2 style="margin:0 0 6px 0; color:#0f172a; font-size:22px;"><?php echo htmlspecialchars($bot_name); ?></h2>
-        <div style="font-size:13.5px; color:#64748b; margin-bottom:20px;">Panel de Control y Métricas para Clientes</div>
+        <div style="font-size:13.5px; color:#64748b; margin-bottom:20px;">Panel de Gesti&oacute;n y M&eacute;tricas para Clientes</div>
 
         <?php if (!empty($login_error)): ?>
-            <div class="alert-box err"><?php echo htmlspecialchars($login_error); ?></div>
+            <div class="alert-box err"><?php echo $login_error; ?></div>
         <?php endif; ?>
 
         <?php if (empty($client_pwd)): ?>
             <div class="alert-box err" style="text-align:center;">
-                🔒 Este chat aún no tiene una <strong>clave de acceso</strong> configurada en el panel de administración. Por favor solicita al administrador que defina una clave para tu chat.
+                &#128274; Este chat a&uacute;n no tiene una <strong>clave de acceso</strong> configurada en el panel de administraci&oacute;n. Por favor solicita al administrador que defina una clave para tu chat.
             </div>
         <?php else: ?>
-            <form method="post">
+            <form method="post" action="client.php?bot=<?php echo urlencode($bot_id); ?>">
                 <input type="hidden" name="bot_id" value="<?php echo htmlspecialchars($bot_id); ?>">
                 <label style="font-size:13px; font-weight:600; color:#475569; display:block; text-align:left;">Ingresa la clave de acceso de tu chat:</label>
                 <input type="password" name="password" class="login-input" placeholder="••••••••" autofocus required>
-                <button type="submit" name="login_client" class="login-btn">Entrar al Panel ➔</button>
+                <button type="submit" name="login_client" class="login-btn">Entrar al Panel &#10148;</button>
             </form>
         <?php endif; ?>
     </div>
@@ -418,43 +402,43 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
             <div class="bot-circle"><?php echo mb_substr($bot_name, 0, 1); ?></div>
             <div>
                 <h1 class="header-title"><?php echo htmlspecialchars($bot_name); ?></h1>
-                <div class="header-sub">Panel de Control & Atencin en Vivo • ID: <code>#<?php echo htmlspecialchars($bot_id); ?></code></div>
+                <div class="header-sub">Panel de Control &amp; Atenci&oacute;n en Vivo &bull; ID: <code>#<?php echo htmlspecialchars($bot_id); ?></code></div>
             </div>
         </div>
 
         <div class="header-actions">
-            <!-- BOT"N DE PAUSA GENERAL DEL BOT -->
+            <!-- BOTON DE PAUSA GENERAL DEL BOT -->
             <?php if ($is_bot_globally_paused): ?>
-                <a href="?bot=<?php echo urlencode($bot_id); ?>&toggle_bot_pause=1" class="pill-btn pill-btn-resume" title="Haz clic para que la IA responda automǭticamente">
-                    -? Bot Pausado (Activar IA)
+                <a href="?bot=<?php echo urlencode($bot_id); ?>&toggle_bot_pause=1" class="pill-btn pill-btn-resume" title="Haz clic para que la IA responda automáticamente">
+                    &#9654;&#65039; Bot Pausado (Activar IA)
                 </a>
             <?php else: ?>
                 <a href="?bot=<?php echo urlencode($bot_id); ?>&toggle_bot_pause=1" class="pill-btn pill-btn-pause" title="Haz clic para desactivar la IA en todos los chats">
-                    ?? Bot en Modo IA (Pausar IA)
+                    &#9208;&#65039; Bot en Modo IA (Pausar IA)
                 </a>
             <?php endif; ?>
 
             <a href="chat.php?id=<?php echo urlencode($bot_id); ?>" target="_blank" class="pill-btn pill-btn-sec">
-                Y Probar Chat
+                &#128065; Probar Chat
             </a>
 
-            <a href="?bot=<?php echo urlencode($bot_id); ?>&logout=1" class="pill-btn pill-btn-sec" style="color:#ef4444;">
-                Cerrar Sesin z"
+            <a href="?bot=<?php echo urlencode($bot_id); ?>&logout=1" class="pill-btn pill-btn-sec" style="color:#ef4444; font-weight:700;">
+                Cerrar Sesi&oacute;n &rarr;
             </a>
         </div>
     </header>
 
-    <!-- NAVEGACI"N DE PESTA'AS -->
+    <!-- NAVEGACION DE PESTAÑAS -->
     <div class="tabs-nav">
         <a href="?bot=<?php echo urlencode($bot_id); ?>&tab=metrics" class="tab-btn <?php echo $active_tab === 'metrics' ? 'active' : ''; ?>">
-            Y"S MǸtricas del Chat
+            &#128202; M&eacute;tricas del Chat
         </a>
         <a href="?bot=<?php echo urlencode($bot_id); ?>&tab=chats" class="tab-btn <?php echo $active_tab === 'chats' ? 'active' : ''; ?>">
-            Y' Conversaciones en Vivo
+            &#128172; Conversaciones en Vivo
             <span class="tab-badge"><?php echo $total_convs; ?></span>
         </a>
         <a href="?bot=<?php echo urlencode($bot_id); ?>&tab=leads" class="tab-btn <?php echo $active_tab === 'leads' ? 'active' : ''; ?>">
-            Y' Contactos Capturados
+            &#128101; Contactos Capturados
             <span class="tab-badge"><?php echo count($bot_leads); ?></span>
         </a>
     </div>
@@ -462,31 +446,31 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
     <main class="main-container">
 
         <!-- ==================================================== -->
-        <!-- PESTA'A 1: MǸTRICAS Y ANAL?TICAS                   -->
+        <!-- PESTAÑA 1: MÉTRICAS Y ANALÍTICAS                    -->
         <!-- ==================================================== -->
         <?php if ($active_tab === 'metrics'): ?>
             
             <?php if ($is_bot_globally_paused): ?>
                 <div style="background:#fef3c7; border:1px solid #fde68a; color:#92400e; padding:12px 18px; border-radius:10px; margin-bottom:20px; font-size:13.5px; display:flex; align-items:center; gap:10px;">
-                    <span style="font-size:20px;">??</span>
+                    <span style="font-size:20px;">&#9208;&#65039;</span>
                     <div>
-                        <strong>Modo Humano Global Activado:</strong> La IA de Gemini estǭ pausada para este bot. Los visitantes no recibirǭn respuestas automǭticas para que puedas atenderlos manualmente.
+                        <strong>Modo Humano Global Activado:</strong> La IA de Gemini est&aacute; pausada para este bot. Los visitantes no recibir&aacute;n respuestas autom&aacute;ticas para que puedas atenderlos personalmente.
                     </div>
                 </div>
             <?php endif; ?>
 
             <div class="kpi-grid">
                 <div class="kpi-card">
-                    <div class="kpi-icon" style="background:#eff6ff; color:#2563eb;">Y'</div>
+                    <div class="kpi-icon" style="background:#eff6ff; color:#2563eb;">&#128101;</div>
                     <div>
-                        <div class="kpi-title">Visitantes ǧnicos</div>
+                        <div class="kpi-title">Visitantes &Uacute;nicos</div>
                         <div class="kpi-val"><?php echo count($unique_visitors); ?></div>
-                        <div class="kpi-sub">Por IP y TelǸfono</div>
+                        <div class="kpi-sub">Por IP y Tel&eacute;fono</div>
                     </div>
                 </div>
 
                 <div class="kpi-card">
-                    <div class="kpi-icon" style="background:#f0fdf4; color:#16a34a;">Y'</div>
+                    <div class="kpi-icon" style="background:#f0fdf4; color:#16a34a;">&#128172;</div>
                     <div>
                         <div class="kpi-title">Conversaciones</div>
                         <div class="kpi-val"><?php echo $total_convs; ?></div>
@@ -495,7 +479,7 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
                 </div>
 
                 <div class="kpi-card">
-                    <div class="kpi-icon" style="background:#fef3c7; color:#d97706;">Y"</div>
+                    <div class="kpi-icon" style="background:#fef3c7; color:#d97706;">&#128140;</div>
                     <div>
                         <div class="kpi-title">Mensajes Totales</div>
                         <div class="kpi-val"><?php echo $total_messages; ?></div>
@@ -504,7 +488,7 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
                 </div>
 
                 <div class="kpi-card">
-                    <div class="kpi-icon" style="background:#fdf2f8; color:#db2777;">Y"</div>
+                    <div class="kpi-icon" style="background:#fdf2f8; color:#db2777;">&#128203;</div>
                     <div>
                         <div class="kpi-title">Contactos (Leads)</div>
                         <div class="kpi-val"><?php echo count($bot_leads); ?></div>
@@ -513,14 +497,14 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
                 </div>
             </div>
 
-            <!-- DISTRIBUCI"N DE PA?SES -->
+            <!-- DISTRIBUCION DE PAISES -->
             <div class="card">
                 <div class="card-header">
-                    <h3 class="card-title">YOE Procedencia Geogrǭfica de tus Clientes</h3>
-                    <span style="font-size:12px; color:#64748b;"><?php echo count($countries); ?> Pases Detectados</span>
+                    <h3 class="card-title">&#127757; Procedencia Geogr&aacute;fica de tus Clientes</h3>
+                    <span style="font-size:12px; color:#64748b;"><?php echo count($countries); ?> Pa&iacute;ses Detectados</span>
                 </div>
                 <?php if (empty($countries)): ?>
-                    <div style="color:#94a3b8; font-size:13.5px; font-style:italic;">Aǧn no hay visitas registradas para este chat.</div>
+                    <div style="color:#94a3b8; font-size:13.5px; font-style:italic;">A&uacute;n no hay visitas registradas para este chat.</div>
                 <?php else: ?>
                     <div class="country-chips">
                         <?php foreach ($countries as $c_name => $c_data): 
@@ -538,26 +522,26 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
                 <?php endif; ?>
             </div>
 
-            <!-- ǧLTIMOS LEADS CAPTURADOS -->
+            <!-- ULTIMOS LEADS CAPTURADOS -->
             <div class="card">
                 <div class="card-header">
-                    <h3 class="card-title">Y' ǧltimos Contactos Registrados</h3>
+                    <h3 class="card-title">&#128101; &Uacute;ltimos Contactos Registrados</h3>
                     <a href="?bot=<?php echo urlencode($bot_id); ?>&export_leads=1" class="pill-btn pill-btn-sec" style="font-size:12px;">
-                        Y" Descargar CSV
+                        &#128229; Descargar CSV
                     </a>
                 </div>
                 <?php if (empty($bot_leads)): ?>
-                    <div style="color:#94a3b8; font-size:13.5px; font-style:italic;">No hay contactos registrados todava.</div>
+                    <div style="color:#94a3b8; font-size:13.5px; font-style:italic;">No hay contactos registrados todav&iacute;a.</div>
                 <?php else: ?>
                     <div style="overflow-x:auto;">
                         <table>
                             <thead>
                                 <tr>
                                     <th>Nombre</th>
-                                    <th>TelǸfono / WhatsApp</th>
+                                    <th>Tel&eacute;fono / WhatsApp</th>
                                     <th>Fecha</th>
-                                    <th>Direccin IP</th>
-                                    <th>Accin</th>
+                                    <th>Direcci&oacute;n IP</th>
+                                    <th>Acci&oacute;n</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -565,14 +549,14 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
                                     $clean_tel = preg_replace('/[^0-9]/', '', $lead['phone'] ?? '');
                                 ?>
                                     <tr>
-                                        <td><strong><?php echo htmlspecialchars($lead['name'] ?? 'Annimo'); ?></strong></td>
+                                        <td><strong><?php echo htmlspecialchars($lead['name'] ?? 'Anónimo'); ?></strong></td>
                                         <td><?php echo htmlspecialchars($lead['phone'] ?? '-'); ?></td>
                                         <td><?php echo htmlspecialchars($lead['date'] ?? '-'); ?></td>
                                         <td><code><?php echo htmlspecialchars($lead['ip'] ?? '-'); ?></code></td>
                                         <td>
                                             <?php if (!empty($clean_tel)): ?>
                                                 <a href="https://wa.me/<?php echo $clean_tel; ?>" target="_blank" class="pill-btn pill-btn-resume" style="font-size:11.5px; padding:4px 10px;">
-                                                    Y" Escribir por WhatsApp
+                                                    &#128241; Escribir por WhatsApp
                                                 </a>
                                             <?php endif; ?>
                                         </td>
@@ -587,7 +571,7 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
         <?php endif; // Fin if metrics ?>
 
         <!-- ==================================================== -->
-        <!-- PESTA'A 2: CHAT EN VIVO Y CONTROL HUMANO            -->
+        <!-- PESTAÑA 2: CHAT EN VIVO Y CONTROL HUMANO            -->
         <!-- ==================================================== -->
         <?php if ($active_tab === 'chats'): ?>
             <div class="chat-explorer">
@@ -595,18 +579,18 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
                 <!-- COLUMNA IZQUIERDA: LISTA DE SESIONES -->
                 <div class="chat-left-pane">
                     <div class="chat-left-header">
-                        <input type="text" id="clientConvSearch" class="search-input" placeholder="Y" Buscar por nombre, telǸfono, pas..." onkeyup="filterClientConversations()">
+                        <input type="text" id="clientConvSearch" class="search-input" placeholder="&#128269; Buscar por nombre, tel&eacute;fono, pa&iacute;s..." onkeyup="filterClientConversations()">
                     </div>
 
                     <div class="chat-list-scroll" id="clientConvList">
                         <?php if (empty($conv_list)): ?>
                             <div style="text-align:center; padding:30px 15px; color:#94a3b8; font-size:13px;">
-                                No hay conversaciones iniciadas aǧn.
+                                No hay conversaciones iniciadas a&uacute;n.
                             </div>
                         <?php else: ?>
                             <?php foreach ($conv_list as $ci): 
                                 $is_active = ($active_conv && $active_conv['_session_id'] === $ci['_session_id']);
-                                $c_flag = !empty($ci['flag']) ? $ci['flag'] : 'YOE';
+                                $c_flag = !empty($ci['flag']) ? $ci['flag'] : '🌐';
                                 $c_country = !empty($ci['country']) ? $ci['country'] : 'Desconocido';
                                 $c_city = !empty($ci['city']) ? $ci['city'] : '';
                                 $c_ip = $ci['ip'] ?? '';
@@ -638,7 +622,7 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
                                             <?php echo $title_disp; ?>
                                         </div>
                                         <span style="font-size:10.5px; padding:1px 6px; border-radius:8px; font-weight:700; background:<?php echo $is_paused_sess ? '#fee2e2' : '#dcfce7'; ?>; color:<?php echo $is_paused_sess ? '#991b1b' : '#166534'; ?>;">
-                                            <?php echo $is_paused_sess ? '?? Humano' : 'YY IA'; ?>
+                                            <?php echo $is_paused_sess ? '&#9208;&#65039; Humano' : '&#9989; IA'; ?>
                                         </span>
                                     </div>
 
@@ -654,7 +638,7 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
                 <!-- COLUMNA DERECHA: VISOR Y RESPUESTA HUMANA EN VIVO -->
                 <div class="chat-right-pane">
                     <?php if ($active_conv): 
-                        $ac_flag = !empty($active_conv['flag']) ? $active_conv['flag'] : 'YOE';
+                        $ac_flag = !empty($active_conv['flag']) ? $active_conv['flag'] : '🌐';
                         $ac_country = !empty($active_conv['country']) ? $active_conv['country'] : 'Desconocido';
                         $ac_city = !empty($active_conv['city']) ? $active_conv['city'] : '';
                         $ac_ip = $active_conv['ip'] ?? '';
@@ -674,29 +658,29 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
                                             <?php echo !empty($ac_name) ? htmlspecialchars($ac_name) : (!empty($ac_phone) ? htmlspecialchars($ac_phone) : 'Visitante'); ?>
                                         </h3>
                                         <span id="sessionStatusBadge" style="font-size:11px; padding:2px 8px; border-radius:10px; font-weight:700; background:<?php echo $is_paused_this ? '#fee2e2' : '#dcfce7'; ?>; color:<?php echo $is_paused_this ? '#991b1b' : '#166534'; ?>;">
-                                            <?php echo $is_paused_this ? '?? Atencin Humana (IA Pausada)' : 'YY IA en Control'; ?>
+                                            <?php echo $is_paused_this ? '&#9208;&#65039; Atenci&oacute;n Humana (IA Pausada)' : '&#9989; IA en Control'; ?>
                                         </span>
                                     </div>
                                     <div style="font-size:12px; color:#64748b; margin-top:2px;">
-                                        Y" <strong><?php echo htmlspecialchars($ac_country); ?></strong> <?php echo !empty($ac_city) ? '• ' . htmlspecialchars($ac_city) : ''; ?>
+                                        📍 <strong><?php echo htmlspecialchars($ac_country); ?></strong> <?php echo !empty($ac_city) ? '• ' . htmlspecialchars($ac_city) : ''; ?>
                                         <?php if (!empty($ac_phone)): ?> • Tel: <strong><?php echo htmlspecialchars($ac_phone); ?></strong><?php endif; ?>
                                         <?php if (!empty($ac_ip)): ?> • IP: <code><?php echo htmlspecialchars($ac_ip); ?></code><?php endif; ?>
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- BOT"N DE PAUSA DE LA SESI"N -->
+                            <!-- BOTON DE PAUSA DE LA SESION -->
                             <div>
                                 <button type="button" id="togglePauseBtn" onclick="toggleCurrentSessionPause()" class="pill-btn <?php echo $is_paused_this ? 'pill-btn-resume' : 'pill-btn-pause'; ?>">
-                                    <?php echo $is_paused_this ? '-? Reanudar IA (Bot Automǭtico)' : '?? Pausar IA (Tomar Control)'; ?>
+                                    <?php echo $is_paused_this ? '&#9654;&#65039; Reanudar IA (Bot Autom&aacute;tico)' : '&#9208;&#65039; Pausar IA (Tomar Control)'; ?>
                                 </button>
                             </div>
                         </div>
 
-                        <!-- BANNER INFORMATIVO SEGǧN MODO -->
+                        <!-- BANNER INFORMATIVO SEGUN MODO -->
                         <div id="pauseNoticeBanner" style="display:<?php echo $is_paused_this ? 'flex' : 'none'; ?>; background:#fef3c7; border-bottom:1px solid #fde68a; color:#92400e; padding:8px 16px; font-size:12.5px; align-items:center; gap:8px;">
-                            <span>??</span>
-                            <span><strong>La IA estǭ pausada para este visitante.</strong> Escribe abajo para responder tǧ mismo en tiempo real.</span>
+                            <span>&#9208;&#65039;</span>
+                            <span><strong>La IA est&aacute; pausada para este visitante.</strong> Escribe abajo para responder t&uacute; mismo en tiempo real.</span>
                         </div>
 
                         <!-- BURBUJAS DE MENSAJES -->
@@ -711,9 +695,9 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
                                     </div>
                                     <div class="bubble-meta">
                                         <?php 
-                                            if ($snd === 'agent') echo "👤 Tú (Asesor Humano)";
-                                            elseif ($snd === 'bot') echo "🤖 Bot IA";
-                                            else echo "Visitante";
+                                            if ($snd === 'agent') echo '&#128100; T&uacute; (Asesor Humano)';
+                                            elseif ($snd === 'bot') echo '&#129302; Bot IA';
+                                            else echo 'Visitante';
                                         ?> • <?php echo htmlspecialchars($m_time); ?>
                                     </div>
                                 </div>
@@ -725,13 +709,13 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
                             <input type="text" id="agentInputText" class="chat-reply-input" placeholder="Escribe tu mensaje para responder al visitante en vivo..." autocomplete="off">
                             <button type="submit" class="chat-reply-send">
                                 <span>Enviar</span>
-                                <span>Y</span>
+                                <span>&#10148;</span>
                             </button>
                         </form>
 
                     <?php else: ?>
                         <div style="margin:auto; text-align:center; color:#94a3b8; padding:30px;">
-                            Selecciona una conversacin a la izquierda para ver el diǭlogo y responder.
+                            Selecciona una conversaci&oacute;n a la izquierda para ver el di&aacute;logo y responder.
                         </div>
                     <?php endif; ?>
                 </div>
@@ -740,20 +724,20 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
         <?php endif; // Fin if chats ?>
 
         <!-- ==================================================== -->
-        <!-- PESTA'A 3: LEADS / CONTACTOS COMPLETOS              -->
+        <!-- PESTAÑA 3: LEADS / CONTACTOS COMPLETOS              -->
         <!-- ==================================================== -->
         <?php if ($active_tab === 'leads'): ?>
             <div class="card">
                 <div class="card-header">
-                    <h3 class="card-title">Y' Listado de Contactos Capturados (<?php echo count($bot_leads); ?>)</h3>
+                    <h3 class="card-title">&#128101; Listado de Contactos Capturados (<?php echo count($bot_leads); ?>)</h3>
                     <a href="?bot=<?php echo urlencode($bot_id); ?>&export_leads=1" class="pill-btn pill-btn-sec">
-                        Y" Descargar Todos en CSV
+                        &#128229; Descargar Todos en CSV
                     </a>
                 </div>
 
                 <?php if (empty($bot_leads)): ?>
                     <div style="text-align:center; padding:40px; color:#94a3b8;">
-                        No hay contactos capturados todava con el formulario previo.
+                        No hay contactos capturados todav&iacute;a con el formulario previo.
                     </div>
                 <?php else: ?>
                     <div style="overflow-x:auto;">
@@ -762,10 +746,10 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
                                 <tr>
                                     <th>#</th>
                                     <th>Nombre del Cliente</th>
-                                    <th>Nǧmero de WhatsApp</th>
+                                    <th>N&uacute;mero de WhatsApp</th>
                                     <th>Fecha y Hora</th>
-                                    <th>Direccin IP</th>
-                                    <th>Accin Directa</th>
+                                    <th>Direcci&oacute;n IP</th>
+                                    <th>Acci&oacute;n Directa</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -783,7 +767,7 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
                                         <td>
                                             <?php if (!empty($raw_p)): ?>
                                                 <a href="https://wa.me/<?php echo $raw_p; ?>?text=<?php echo urlencode("Hola " . ($l['name'] ?? '') . ", te escribo respecto a tu consulta en nuestro sitio web."); ?>" target="_blank" class="pill-btn pill-btn-resume" style="padding:4px 10px; font-size:12px;">
-                                                    Y" Abrir en WhatsApp
+                                                    &#128241; Abrir en WhatsApp
                                                 </a>
                                             <?php endif; ?>
                                         </td>
@@ -798,7 +782,7 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
 
     </main>
 
-    <!-- SCRIPTS EN TIEMPO REAL: POLLING, ENV?O Y PAUSA -->
+    <!-- SCRIPTS EN TIEMPO REAL: POLLING, ENVIO Y PAUSA -->
     <script>
         const BOT_ID = <?php echo json_encode($bot_id); ?>;
         const ACTIVE_SESS = <?php echo json_encode($active_conv ? $active_conv['_session_id'] : ''); ?>;
@@ -825,7 +809,7 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
         }
         window.addEventListener('DOMContentLoaded', scrollToBottom);
 
-        // Sonido suave de notificacin (Web Audio API nativo sin archivos externos)
+        // Sonido suave de notificacion (Web Audio API nativo sin archivos externos)
         function playChimeNotice() {
             try {
                 const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -843,7 +827,7 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
             } catch(e) {}
         }
 
-        // ALTERNAR PAUSA DE LA SESI"N EN VIVO VIA AJAX
+        // ALTERNAR PAUSA DE LA SESION EN VIVO VIA AJAX
         async function toggleCurrentSessionPause() {
             if (!ACTIVE_SESS) return;
             const btn = document.getElementById('togglePauseBtn');
@@ -866,20 +850,20 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
                     isSessionPaused = data.is_paused;
                     if (isSessionPaused) {
                         btn.className = 'pill-btn pill-btn-resume';
-                        btn.innerText = '-? Reanudar IA (Bot Automǭtico)';
+                        btn.innerHTML = '&#9654;&#65039; Reanudar IA (Bot Autom&aacute;tico)';
                         if (badge) {
                             badge.style.background = '#fee2e2';
                             badge.style.color = '#991b1b';
-                            badge.innerText = '?? Atencin Humana (IA Pausada)';
+                            badge.innerHTML = '&#9208;&#65039; Atenci&oacute;n Humana (IA Pausada)';
                         }
                         if (banner) banner.style.display = 'flex';
                     } else {
                         btn.className = 'pill-btn pill-btn-pause';
-                        btn.innerText = '?? Pausar IA (Tomar Control)';
+                        btn.innerHTML = '&#9208;&#65039; Pausar IA (Tomar Control)';
                         if (badge) {
                             badge.style.background = '#dcfce7';
                             badge.style.color = '#166534';
-                            badge.innerText = 'YY IA en Control';
+                            badge.innerHTML = '&#9989; IA en Control';
                         }
                         if (banner) banner.style.display = 'none';
                     }
@@ -904,7 +888,7 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
             bubbleRow.className = 'bubble-row agent';
             bubbleRow.innerHTML = `
                 <div class="bubble">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</div>
-                <div class="bubble-meta">Y' Tǧ (Asesor Humano) • Justo ahora</div>
+                <div class="bubble-meta">&#128100; T&uacute; (Asesor Humano) &bull; Justo ahora</div>
             `;
             container.appendChild(bubbleRow);
             scrollToBottom();
@@ -926,7 +910,7 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
                 });
                 const data = await res.json();
                 
-                // Si la conversacin no estaba pausada, pausarla automǭticamente para que el humano tenga el control
+                // Si la conversacion no estaba pausada, pausarla automaticamente para que el humano tenga el control
                 if (!isSessionPaused) {
                     isSessionPaused = true;
                     const btn = document.getElementById('togglePauseBtn');
@@ -934,12 +918,12 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
                     const banner = document.getElementById('pauseNoticeBanner');
                     if (btn) {
                         btn.className = 'pill-btn pill-btn-resume';
-                        btn.innerText = '-? Reanudar IA (Bot Automǭtico)';
+                        btn.innerHTML = '&#9654;&#65039; Reanudar IA (Bot Autom&aacute;tico)';
                     }
                     if (badge) {
                         badge.style.background = '#fee2e2';
                         badge.style.color = '#991b1b';
-                        badge.innerText = '?? Atencin Humana (IA Pausada)';
+                        badge.innerHTML = '&#9208;&#65039; Atenci&oacute;n Humana (IA Pausada)';
                     }
                     if (banner) banner.style.display = 'flex';
                 }
@@ -970,15 +954,14 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
                         let hasNewVisitorMsg = false;
 
                         data.new_messages.forEach(m => {
-                            // Si ya fue mostrado localmente como 'agent', evitar duplicarlo
                             if (m.sender === 'agent') return;
 
                             const bubbleRow = document.createElement('div');
                             bubbleRow.className = 'bubble-row ' + m.sender;
-                            let senderLabel = (m.sender === 'bot') ? 'Y- Bot IA' : 'Visitante';
+                            let senderLabel = (m.sender === 'bot') ? '&#129302; Bot IA' : 'Visitante';
                             bubbleRow.innerHTML = `
                                 <div class="bubble">${m.text.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</div>
-                                <div class="bubble-meta">${senderLabel} • ${m.time || ''}</div>
+                                <div class="bubble-meta">${senderLabel} &bull; ${m.time || ''}</div>
                             `;
                             container.appendChild(bubbleRow);
                             if (m.sender === 'user') hasNewVisitorMsg = true;
