@@ -238,11 +238,12 @@ if (is_session_or_bot_paused($bot_id, $session_id)) {
     if (function_exists('save_chat_interaction')) {
         save_chat_interaction($bot_id, $session_id, $user_msg, '', 'web');
     }
+    $notice_text = '👤 Tu mensaje ha sido recibido por un asesor humano. En un momento te responderemos.';
     echo json_encode([
         'status' => 'paused',
         'is_paused' => true,
-        'reply' => null,
-        'notice' => 'Tu mensaje ha sido recibido por un asesor humano. En un momento te responderemos.'
+        'reply' => $notice_text,
+        'notice' => $notice_text
     ]);
     exit;
 }

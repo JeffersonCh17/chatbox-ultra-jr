@@ -209,6 +209,18 @@ if (isset($_SESSION['logged_in']) && isset($_GET['delete_bot'])) {
     }
 }
 
+// Alternar Pausa Global de Bot Web (Modo Humano)
+if (isset($_SESSION['logged_in']) && isset($_GET['toggle_bot_pause'])) {
+    $id = preg_replace('/[^a-zA-Z0-9_]/', '', $_GET['toggle_bot_pause']);
+    if (isset($settings['bots'][$id])) {
+        $cur = !empty($settings['bots'][$id]['is_paused']);
+        $settings['bots'][$id]['is_paused'] = !$cur;
+        save_settings($settings);
+        header("Location: admin.php?tab=web&success=pause_toggled&opened=" . urlencode($id));
+        exit;
+    }
+}
+
 $wa_settings = get_wa_settings();
 if (!isset($wa_settings['instances'])) { $wa_settings['instances'] = []; }
 if (!isset($wa_settings['errors'])) { $wa_settings['errors'] = []; }
@@ -346,6 +358,7 @@ foreach ($all_convs as $b_convs) {
 
 if ($action_success === 'created') $success = "¡Chat Web creado exitosamente!";
 if ($action_success === 'updated') $success = "¡Configuración de Chat Web actualizada!";
+if ($action_success === 'pause_toggled') $success = "¡Estado de la IA del chat actualizado exitosamente!";
 if ($action_success === 'wa_created') $success = "¡Número / Instancia de WhatsApp creada exitosamente!";
 if ($action_success === 'wa_updated') $success = "¡Configuración de WhatsApp actualizada exitosamente!";
 if ($action_success === 'wa_toggled') $success = "¡Estado de WhatsApp actualizado exitosamente!";
@@ -796,6 +809,14 @@ $base_url = get_system_base_url();
                                     <?php if ($has_errors): ?>
                                         <span class="badge badge-err">⚠️ Error API</span>
                                     <?php endif; ?>
+
+                                    <?php $is_bot_paused = !empty($bot['is_paused']); ?>
+                                    <span class="badge" style="background:<?php echo $is_bot_paused ? '#fef3c7' : '#dcfce7'; ?>; color:<?php echo $is_bot_paused ? '#92400e' : '#166534'; ?>;">
+                                        <?php echo $is_bot_paused ? '⏸️ IA Pausada (Humano)' : '🟢 IA Activa'; ?>
+                                    </span>
+                                    <a href="?toggle_bot_pause=<?php echo $id; ?>" onclick="event.stopPropagation();" class="btn-sm" style="background:<?php echo $is_bot_paused ? '#dcfce7' : '#fee2e2'; ?>; color:<?php echo $is_bot_paused ? '#166534' : '#991b1b'; ?>; text-decoration:none; margin-left:8px; padding:4px 10px; font-weight:700; border-radius:6px;" title="<?php echo $is_bot_paused ? 'Reanudar IA para que responda automáticamente' : 'Pausar IA para atender tú mismo'; ?>">
+                                        <?php echo $is_bot_paused ? '▶️ Reanudar IA' : '⏸️ Pausar IA'; ?>
+                                    </a>
                                 </div>
                                 <div class="bot-toggle-btn">
                                     <span>Configurar</span>
