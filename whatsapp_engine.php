@@ -220,7 +220,7 @@ function process_wa_incoming_message($instance, $phone, $incoming_text) {
     // 6. Modo Híbrido o Gemini Only: Responder con IA usando Multi-Key
     $main_settings = function_exists('get_settings') ? get_settings() : [];
     $api_keys = !empty(trim($instance['api_key'] ?? '')) ? $instance['api_key'] : ($main_settings['api_keys'] ?? '');
-    $model = !empty($instance['model']) ? trim($instance['model']) : 'gemini-3.5-flash';
+    $model = !empty($instance['model']) ? trim($instance['model']) : 'gemini-3.8-flash';
     $system_prompt = $instance['prompt'] ?? 'Eres un asistente cordial y experto en WhatsApp.';
     
     // Agregar contexto del menú al system prompt para que la IA sepa los servicios

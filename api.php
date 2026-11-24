@@ -223,6 +223,38 @@ if ($action === 'get_conversation') {
 }
 
 // ========================================================
+// 5.5. ACTUALIZAR NOMBRE PERSONALIZADO Y CATEGORÍA DEL CHAT
+// ========================================================
+if ($action === 'update_chat_meta') {
+    $auth_key = $input['key'] ?? '';
+    if (!is_authorized_for_bot($bot_id, $auth_key)) {
+        echo json_encode(['error' => 'No autorizado.']);
+        exit;
+    }
+    
+    $custom_name = $input['custom_name'] ?? null;
+    $category = $input['category'] ?? null;
+    $notes = $input['notes'] ?? null;
+    
+    $meta = [];
+    if ($custom_name !== null) $meta['custom_name'] = $custom_name;
+    if ($category !== null) $meta['category'] = $category;
+    if ($notes !== null) $meta['notes'] = $notes;
+    
+    $res = update_conversation_meta($bot_id, $session_id, $meta);
+    if ($res) {
+        echo json_encode([
+            'status' => 'success',
+            'message' => 'Metadatos del chat actualizados exitosamente.',
+            'meta' => $meta
+        ]);
+        exit;
+    }
+    echo json_encode(['error' => 'No se encontró la conversación para actualizar.']);
+    exit;
+}
+
+// ========================================================
 // 6. CONVERSACIÓN DEL VISITANTE (GEMINI O MODO HUMANO)
 // ========================================================
 if (empty($input['message'])) {
@@ -249,7 +281,7 @@ if (is_session_or_bot_paused($bot_id, $session_id)) {
 }
 
 $api_key = $bot['api_key'] ?? '';
-$model = !empty($bot['model']) ? $bot['model'] : 'gemini-3.5-flash';
+$model = !empty($bot['model']) ? $bot['model'] : 'gemini-flash-lite-latest';
 $system_prompt = $bot['prompt'] ?? '';
 $fallback_msg = $bot['fallback_msg'] ?? 'Error de conexión con IA.';
 $history = $input['history'] ?? [];

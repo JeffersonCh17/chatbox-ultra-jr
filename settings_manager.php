@@ -30,45 +30,62 @@ function log_bot_error($bot_id, $error_msg) {
     save_settings($settings);
 }
 
-// Extrae array de API keys (admite comas, saltos de línea o espacios)
+// Extrae array de API keys (admite comas, saltos de línea, punto y coma o espacios múltiples)
 function parse_api_keys($raw) {
     if (is_array($raw)) {
-        return array_values(array_filter(array_map('trim', $raw)));
+        $flat = [];
+        foreach ($raw as $item) {
+            $sub = parse_api_keys($item);
+            $flat = array_merge($flat, $sub);
+        }
+        return array_values(array_unique(array_filter($flat)));
     }
-    $raw = str_replace(["\r\n", "\r", "\n", ";"], ',', (string)$raw);
-    $parts = explode(',', $raw);
+    if (empty($raw)) return [];
+
+    $text = str_replace(["\r\n", "\r", "\n", ";"], ',', (string)$raw);
+    $lines = explode(',', $text);
     $keys = [];
-    foreach ($parts as $p) {
-        $p = trim($p);
-        if (!empty($p)) {
-            $keys[] = $p;
+    foreach ($lines as $line) {
+        $line = trim($line);
+        if (empty($line)) continue;
+        // Si pegaron varias claves en una misma línea separadas por espacios
+        $parts = preg_split('/\s+/', $line);
+        foreach ($parts as $p) {
+            $p = trim($p);
+            // Longitud mínima razonable para una API Key válida
+            if (!empty($p) && strlen($p) >= 15) {
+                $keys[] = $p;
+            }
         }
     }
     return array_values(array_unique($keys));
 }
 
-// Invocación a Gemini con rotación automática entre múltiples API Keys
+// Invocación a Gemini con rotación secuencial automática entre infinitas API Keys
 function call_gemini_multikey($api_keys, $model, $payload, $bot_id = 'gemini') {
     $keys = parse_api_keys($api_keys);
     if (empty($keys)) {
         return ['success' => false, 'error' => 'No se configuró ninguna API Key de Gemini.'];
     }
     
-    // Respetar estrictamente el modelo ingresado por el usuario (ej: gemini-3.5-flash)
+    // Respetar estrictamente el modelo ingresado por el usuario (ej: gemini-3.8-flash)
     $clean_model = trim($model ?? '');
-    // Si contiene "pro", evitar modelos Pro en tier gratuito porque Google les asigna límite = 0
     if (empty($clean_model) || stripos($clean_model, 'pro') !== false) {
-        $requested_model = 'gemini-3.5-flash';
+        $requested_model = 'gemini-3.8-flash';
     } else {
         $requested_model = $clean_model;
     }
     
+    $total_keys = count($keys);
     $last_error = '';
+
     foreach ($keys as $idx => $key) {
-        // Cola de modelos: Primero prueba el que tú configuraste (ej: gemini-3.5-flash)
+        $key_num = $idx + 1;
+        $key_preview = substr($key, 0, 8) . '...' . substr($key, -4);
+
+        // Cola de modelos prioritarios estables para esta clave
         $models_queue = [$requested_model];
-        // Solo modelos Flash con alta cuota gratuita (1,500 req/día)
-        foreach (['gemini-3.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash'] as $fb_m) {
+        foreach (['gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-flash-lite-latest', 'gemini-flash-latest'] as $fb_m) {
             if (!in_array($fb_m, $models_queue)) {
                 $models_queue[] = $fb_m;
             }
@@ -80,7 +97,8 @@ function call_gemini_multikey($api_keys, $model, $payload, $bot_id = 'gemini') {
             curl_setopt($ch, CURLOPT_POST, true);
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'Content-Type: application/json'
+                'Content-Type: application/json',
+                'x-goog-api-key: ' . $key
             ]);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
@@ -96,44 +114,50 @@ function call_gemini_multikey($api_keys, $model, $payload, $bot_id = 'gemini') {
 
             if ($httpcode === 200 && $response !== false) {
                 $data = json_decode($response, true);
-                if (isset($data['candidates'][0]['content']['parts'][0]['text'])) {
+                if (!empty($data['candidates'][0]['content']['parts'][0]['text'])) {
+                    // Si se usó una clave de respaldo, avisar en el registro de que la rotación funcionó
+                    if ($idx > 0) {
+                        log_bot_error($bot_id, "✅ Rotación exitosa: Respondido por Key #{$key_num} ({$key_preview}) con {$current_model}");
+                    }
                     return [
                         'success' => true,
                         'text' => $data['candidates'][0]['content']['parts'][0]['text'],
                         'used_key_index' => $idx,
                         'used_model' => $current_model,
-                        'used_key_preview' => substr($key, 0, 8) . '...' . substr($key, -4)
+                        'used_key_preview' => $key_preview
                     ];
                 }
             }
             
             $json_err = json_decode($response, true);
             $err_msg = $json_err['error']['message'] ?? ($response ? $response : $curl_err);
-            $err_detail = "Key #" . ($idx + 1) . " (" . substr($key, 0, 6) . "...) fallo HTTP $httpcode con modelo $current_model: " . $err_msg;
+            $err_detail = "Key #{$key_num} ({$key_preview}) arrojó HTTP {$httpcode} con {$current_model}: {$err_msg}";
 
-            // Si es un error de autenticación (clave inválida o bloqueada), no seguir probando otros modelos con la misma clave
-            if ($httpcode === 400 || $httpcode === 401 || $httpcode === 403) {
-                $last_error = "API Key #" . ($idx + 1) . " no válida o rechazada por Google (HTTP $httpcode): " . $err_msg;
-                log_bot_error($bot_id, $last_error);
+            // Si es error de cuota/rate limit (429) o rechazo de clave (400, 401, 403), saltar de inmediato a la siguiente clave
+            if ($httpcode === 429 || $httpcode === 400 || $httpcode === 401 || $httpcode === 403) {
+                $reason = ($httpcode === 429) ? 'límite de cuota excedido (HTTP 429)' : "rechazada por Google (HTTP {$httpcode})";
+                $last_error = "API Key #{$key_num} ({$key_preview}) {$reason}: {$err_msg}";
+                if ($key_num < $total_keys) {
+                    log_bot_error($bot_id, "⚠️ {$last_error} ➔ Rotando automáticamente a Key #" . ($key_num + 1) . "...");
+                } else {
+                    log_bot_error($bot_id, "❌ {$last_error} (Era la última de {$total_keys} claves configuradas).");
+                }
                 break; // Romper loop de modelos y pasar a la siguiente API Key
             }
 
-            // Si es error 429 (Límite por minuto o cuota diaria alcanzada en esta clave), rotar a la siguiente clave
-            if ($httpcode === 429) {
-                $last_error = "API Key #" . ($idx + 1) . " excedió límite de Google (HTTP 429): " . $err_msg;
-                log_bot_error($bot_id, $last_error);
-                break; // Pasar inmediatamente a la siguiente API Key configurada
-            }
-
-            // Si el modelo falló y aún quedan modelos en la cola, probar el siguiente modelo
+            // Si el modelo falló por no encontrado (404) u otro, intentar con el siguiente modelo de la cola
             $last_model_in_queue = end($models_queue);
             if ($current_model !== $last_model_in_queue) {
-                log_bot_error($bot_id, "Modelo $current_model arrojó $httpcode. Probando siguiente modelo de respaldo...");
                 continue;
             }
             
+            // Si fallaron todos los modelos para esta clave, pasar a la siguiente clave
             $last_error = $err_detail;
-            log_bot_error($bot_id, "Agotados modelos para Key #" . ($idx + 1) . ": " . $err_detail);
+            if ($key_num < $total_keys) {
+                log_bot_error($bot_id, "⚠️ Modelos agotados para Key #{$key_num} ({$key_preview}) ➔ Rotando a Key #" . ($key_num + 1) . "...");
+            } else {
+                log_bot_error($bot_id, "❌ Todas las {$total_keys} API Keys configuradas fallaron. Último error: {$err_detail}");
+            }
             break; // Pasar a la siguiente API Key
         }
     }
@@ -593,4 +617,90 @@ function add_agent_message_to_conversation($bot_id, $session_id, $message_text) 
     }
     
     return $msg_item;
+}
+
+// Catálogo oficial de categorías de conversación
+function get_chat_categories() {
+    return [
+        'lead' => [
+            'key' => 'lead',
+            'name' => 'Lead / Prospecto',
+            'icon' => '🔥',
+            'label' => '🔥 Lead / Prospecto',
+            'badge_bg' => '#fef3c7',
+            'badge_color' => '#92400e',
+            'border' => '#fde68a'
+        ],
+        'cliente' => [
+            'key' => 'cliente',
+            'name' => 'Cliente / Venta',
+            'icon' => '💼',
+            'label' => '💼 Cliente / Venta',
+            'badge_bg' => '#dcfce7',
+            'badge_color' => '#166534',
+            'border' => '#bbf7d0'
+        ],
+        'soporte' => [
+            'key' => 'soporte',
+            'name' => 'Soporte Técnico',
+            'icon' => '❓',
+            'label' => '❓ Soporte Técnico',
+            'badge_bg' => '#eff6ff',
+            'badge_color' => '#1e40af',
+            'border' => '#bfdbfe'
+        ],
+        'seguimiento' => [
+            'key' => 'seguimiento',
+            'name' => 'En Seguimiento',
+            'icon' => '⏳',
+            'label' => '⏳ En Seguimiento',
+            'badge_bg' => '#f3e8ff',
+            'badge_color' => '#6b21a8',
+            'border' => '#e9d5ff'
+        ],
+        'urgente' => [
+            'key' => 'urgente',
+            'name' => 'Urgente / Reclamo',
+            'icon' => '⚠️',
+            'label' => '⚠️ Urgente / Reclamo',
+            'badge_bg' => '#fee2e2',
+            'badge_color' => '#991b1b',
+            'border' => '#fca5a5'
+        ],
+        'cerrado' => [
+            'key' => 'cerrado',
+            'name' => 'Resuelto / Cerrado',
+            'icon' => '✅',
+            'label' => '✅ Resuelto / Cerrado',
+            'badge_bg' => '#f1f5f9',
+            'badge_color' => '#475569',
+            'border' => '#cbd5e1'
+        ]
+    ];
+}
+
+// Asignar o actualizar nombre personalizado y categoría a un chat
+function update_conversation_meta($bot_id, $session_id, $meta = []) {
+    if (empty($bot_id) || empty($session_id)) return false;
+    
+    $file = __DIR__ . '/conversations.json';
+    $convs = get_conversations();
+    $sess_key = preg_replace('/[^a-zA-Z0-9_\-\+]/', '', $session_id);
+    
+    if (!isset($convs[$bot_id][$sess_key])) {
+        return false;
+    }
+    
+    if (array_key_exists('custom_name', $meta)) {
+        $convs[$bot_id][$sess_key]['custom_name'] = trim((string)$meta['custom_name']);
+    }
+    if (array_key_exists('category', $meta)) {
+        $convs[$bot_id][$sess_key]['category'] = trim((string)$meta['category']);
+    }
+    if (array_key_exists('notes', $meta)) {
+        $convs[$bot_id][$sess_key]['notes'] = trim((string)$meta['notes']);
+    }
+    
+    @file_put_contents($file, json_encode($convs, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+    return true;
 }

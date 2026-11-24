@@ -105,6 +105,23 @@ if ($is_authenticated && isset($_GET['toggle_bot_pause'])) {
     exit;
 }
 
+// GUARDAR METADATOS (NOMBRE PERSONALIZADO Y CATEGORIA DEL CHAT)
+if ($is_authenticated && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'save_chat_meta') {
+    $sess_target = $_POST['session_id'] ?? '';
+    $custom_name = $_POST['custom_name'] ?? '';
+    $category = $_POST['category'] ?? '';
+    $notes = $_POST['notes'] ?? '';
+    
+    update_conversation_meta($bot_id, $sess_target, [
+        'custom_name' => $custom_name,
+        'category' => $category,
+        'notes' => $notes
+    ]);
+    
+    header("Location: client.php?bot=" . urlencode($bot_id) . "&tab=chats&sess=" . urlencode($sess_target) . "&saved=meta");
+    exit;
+}
+
 // CARGA DE DATOS PARA EL DASHBOARD
 $active_tab = $_GET['tab'] ?? 'metrics';
 $selected_sess_id = $_GET['sess'] ?? '';
@@ -114,6 +131,7 @@ $bot_convs = $all_convs[$bot_id] ?? [];
 
 $all_leads = get_leads();
 $bot_leads = $all_leads[$bot_id] ?? [];
+$cat_list = function_exists('get_chat_categories') ? get_chat_categories() : [];
 
 // CALCULAR METRICAS
 $total_convs = count($bot_convs);
@@ -342,6 +360,101 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
         }
         .chat-reply-send:hover { background: #15803d; }
         .chat-reply-send:active { transform: scale(0.97); }
+
+        /* FILTRO POR CATEGORIAS */
+        .category-filter-bar {
+            display: flex; gap: 6px; overflow-x: auto; white-space: nowrap;
+            padding: 8px 14px 10px; border-bottom: 1px solid var(--border);
+            -webkit-overflow-scrolling: touch; background: #ffffff;
+        }
+        .category-filter-bar::-webkit-scrollbar { height: 4px; }
+        .category-filter-bar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        
+        .cat-filter-btn {
+            background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px;
+            padding: 4px 10px; font-size: 11.5px; font-weight: 700; color: #475569;
+            cursor: pointer; transition: all 0.15s; white-space: nowrap; flex-shrink: 0;
+        }
+        .cat-filter-btn:hover { background: #f1f5f9; color: #0f172a; border-color: #cbd5e1; }
+        .cat-filter-btn.active { background: var(--primary); color: #ffffff; border-color: var(--primary); }
+
+        .cat-pill {
+            display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px;
+            font-weight: 700; padding: 2px 7px; border-radius: 10px; line-height: 1.2;
+        }
+
+        /* BARRA PARA RENOMBRAR Y CATEGORIZAR EL CHAT */
+        .chat-meta-bar {
+            background: #ffffff; border-bottom: 1px solid var(--border);
+            padding: 10px 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+        }
+        .chat-meta-form {
+            display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; width: 100%;
+        }
+        .meta-field { display: flex; flex-direction: column; gap: 3px; }
+        .meta-input {
+            padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;
+            font-size: 13px; outline: none; background: #f8fafc; transition: border-color 0.2s;
+        }
+        .meta-input:focus { border-color: var(--primary); background: #ffffff; }
+        .meta-select {
+            padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;
+            font-size: 13px; outline: none; background: #f8fafc; cursor: pointer;
+        }
+        .meta-select:focus { border-color: var(--primary); background: #ffffff; }
+        .meta-save-btn {
+            background: #16a34a; color: white; border: none; border-radius: 6px;
+            padding: 8px 16px; font-size: 13px; font-weight: 700; cursor: pointer;
+            transition: all 0.2s; height: 35px; white-space: nowrap;
+        }
+        .meta-save-btn:hover { background: #15803d; }
+
+        .mobile-back-btn {
+            display: none; align-items: center; gap: 5px; padding: 6px 12px;
+            background: #f1f5f9; color: #334155; border-radius: 6px; font-size: 12.5px;
+            font-weight: 700; text-decoration: none; border: 1px solid #cbd5e1;
+        }
+
+        /* RESPONSIVE DESIGN TOTAL */
+        @media (max-width: 768px) {
+            .header { padding: 12px 14px; flex-direction: column; align-items: stretch; gap: 10px; }
+            .header-brand { justify-content: space-between; width: 100%; }
+            .header-actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+            .header-actions .pill-btn { justify-content: center; padding: 10px; font-size: 12px; }
+            .header-actions .pill-btn-pause, .header-actions .pill-btn-resume { grid-column: span 2; }
+            
+            .tabs-nav { padding: 0 12px; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; gap: 4px; }
+            .tab-btn { padding: 10px 14px; font-size: 13px; flex-shrink: 0; }
+            
+            .main-container { padding: 0 12px; margin: 15px auto 30px; }
+            .kpi-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+            .kpi-card { padding: 14px; gap: 10px; }
+            .kpi-icon { width: 38px; height: 38px; font-size: 20px; }
+            .kpi-val { font-size: 22px; }
+            
+            .chat-explorer {
+                grid-template-columns: 1fr;
+                height: calc(100dvh - 170px);
+                min-height: 520px;
+            }
+            .chat-explorer.has-active-conv .chat-left-pane { display: none !important; }
+            .chat-explorer.no-active-conv .chat-right-pane { display: none !important; }
+            
+            .mobile-back-btn { display: inline-flex !important; }
+            .chat-view-header { padding: 12px 14px; }
+            .chat-reply-bar { padding: 10px 12px; }
+            .chat-reply-input { padding: 10px 14px; font-size: 13.5px; }
+            .chat-reply-send { padding: 10px 16px; font-size: 13.5px; }
+
+            .chat-meta-bar { padding: 10px 12px; }
+            .chat-meta-form { flex-direction: column; align-items: stretch; gap: 8px; }
+            .meta-field { width: 100% !important; min-width: 100% !important; }
+            .meta-save-btn { width: 100%; height: 38px; }
+        }
+
+        @media (max-width: 480px) {
+            .kpi-grid { grid-template-columns: 1fr; }
+        }
 
         /* LOGIN FORM */
         .login-card {
@@ -574,18 +687,35 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
         <!-- PESTAÑA 2: CHAT EN VIVO Y CONTROL HUMANO            -->
         <!-- ==================================================== -->
         <?php if ($active_tab === 'chats'): ?>
-            <div class="chat-explorer">
+            <div class="chat-explorer <?php echo $active_conv ? 'has-active-conv' : 'no-active-conv'; ?>">
                 
                 <!-- COLUMNA IZQUIERDA: LISTA DE SESIONES -->
                 <div class="chat-left-pane">
                     <div class="chat-left-header">
-                        <input type="text" id="clientConvSearch" class="search-input" placeholder="&#128269; Buscar por nombre, tel&eacute;fono, pa&iacute;s..." onkeyup="filterClientConversations()">
+                        <input type="text" id="clientConvSearch" class="search-input" placeholder="🔍 Buscar por nombre, alias, categoría, tel..." onkeyup="filterClientConversations()">
+                    </div>
+
+                    <!-- BARRA DE FILTRO POR CATEGORÍAS -->
+                    <div class="category-filter-bar">
+                        <button type="button" class="cat-filter-btn active" data-cat="all" onclick="filterByCategory('all', this)">
+                            ⚡ Todos (<?php echo count($conv_list); ?>)
+                        </button>
+                        <?php foreach ($cat_list as $ck => $ci_meta): 
+                            $cat_count = 0;
+                            foreach ($conv_list as $cl_item) {
+                                if (($cl_item['category'] ?? '') === $ck) $cat_count++;
+                            }
+                        ?>
+                            <button type="button" class="cat-filter-btn" data-cat="<?php echo $ck; ?>" onclick="filterByCategory('<?php echo $ck; ?>', this)">
+                                <?php echo $ci_meta['icon'] . ' ' . $ci_meta['name']; ?> (<?php echo $cat_count; ?>)
+                            </button>
+                        <?php endforeach; ?>
                     </div>
 
                     <div class="chat-list-scroll" id="clientConvList">
                         <?php if (empty($conv_list)): ?>
                             <div style="text-align:center; padding:30px 15px; color:#94a3b8; font-size:13px;">
-                                No hay conversaciones iniciadas a&uacute;n.
+                                No hay conversaciones iniciadas aún.
                             </div>
                         <?php else: ?>
                             <?php foreach ($conv_list as $ci): 
@@ -596,35 +726,63 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
                                 $c_ip = $ci['ip'] ?? '';
                                 $c_phone = $ci['user_phone'] ?? '';
                                 $c_name = $ci['user_name'] ?? '';
+                                $c_custom_name = !empty($ci['custom_name']) ? $ci['custom_name'] : '';
+                                $c_cat_key = !empty($ci['category']) ? $ci['category'] : '';
+                                $c_cat_info = !empty($c_cat_key) && isset($cat_list[$c_cat_key]) ? $cat_list[$c_cat_key] : null;
+
                                 $c_msgs = $ci['messages'] ?? [];
                                 $last_msg = !empty($c_msgs) ? end($c_msgs)['text'] : 'Sin mensajes';
-                                $last_msg_short = mb_strimwidth($last_msg, 0, 50, '...');
+                                $last_msg_short = mb_strimwidth($last_msg, 0, 48, '...');
                                 $last_time = date('d/m H:i', strtotime($ci['last_activity'] ?? $ci['started_at']));
                                 $is_paused_sess = !empty($ci['is_paused']) || $is_bot_globally_paused;
                                 
-                                $title_disp = !empty($c_name) ? htmlspecialchars($c_name) : (!empty($c_phone) ? htmlspecialchars($c_phone) : (!empty($c_ip) ? htmlspecialchars($c_ip) : 'Visitante'));
-                                $kw = strtolower($c_name . ' ' . $c_phone . ' ' . $c_ip . ' ' . $c_country . ' ' . $c_city . ' ' . $last_msg);
+                                // Nombre visible prioritario: Custom Name -> Form Name -> Phone -> IP
+                                if (!empty($c_custom_name)) {
+                                    $title_disp = htmlspecialchars($c_custom_name);
+                                    $sub_ident = !empty($c_name) ? htmlspecialchars($c_name) : (!empty($c_phone) ? htmlspecialchars($c_phone) : '');
+                                } elseif (!empty($c_name)) {
+                                    $title_disp = htmlspecialchars($c_name);
+                                    $sub_ident = !empty($c_phone) ? htmlspecialchars($c_phone) : '';
+                                } elseif (!empty($c_phone)) {
+                                    $title_disp = htmlspecialchars($c_phone);
+                                    $sub_ident = '';
+                                } else {
+                                    $title_disp = 'Visitante ' . substr($ci['_session_id'], 0, 8);
+                                    $sub_ident = !empty($c_ip) ? htmlspecialchars($c_ip) : '';
+                                }
+
+                                $kw = strtolower($c_custom_name . ' ' . $c_name . ' ' . $c_phone . ' ' . $c_ip . ' ' . $c_country . ' ' . $c_city . ' ' . ($c_cat_info['name'] ?? '') . ' ' . $last_msg);
                             ?>
                                 <a href="?bot=<?php echo urlencode($bot_id); ?>&tab=chats&sess=<?php echo urlencode($ci['_session_id']); ?>" 
                                    class="conv-card <?php echo $is_active ? 'active' : ''; ?>"
                                    data-kw="<?php echo htmlspecialchars($kw); ?>"
+                                   data-category="<?php echo htmlspecialchars($c_cat_key); ?>"
                                    id="conv_card_<?php echo htmlspecialchars($ci['_session_id']); ?>">
                                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
                                         <div style="display:flex; align-items:center; gap:6px;">
                                             <span style="font-size:15px;"><?php echo $c_flag; ?></span>
-                                            <strong style="font-size:12.5px; color:#0f172a;"><?php echo htmlspecialchars($c_country); ?></strong>
+                                            <strong style="font-size:12px; color:#0f172a;"><?php echo htmlspecialchars($c_country); ?></strong>
                                         </div>
                                         <span style="font-size:11px; color:#94a3b8;"><?php echo $last_time; ?></span>
                                     </div>
 
-                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                                        <div style="font-size:13px; font-weight:700; color:#1e293b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:200px;">
+                                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:6px; margin-bottom:3px;">
+                                        <div style="font-size:13.5px; font-weight:700; color:#1e293b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:210px;">
                                             <?php echo $title_disp; ?>
                                         </div>
-                                        <span style="font-size:10.5px; padding:1px 6px; border-radius:8px; font-weight:700; background:<?php echo $is_paused_sess ? '#fee2e2' : '#dcfce7'; ?>; color:<?php echo $is_paused_sess ? '#991b1b' : '#166534'; ?>;">
-                                            <?php echo $is_paused_sess ? '&#9208;&#65039; Humano' : '&#9989; IA'; ?>
+                                        <span style="font-size:10.5px; padding:1px 6px; border-radius:8px; font-weight:700; flex-shrink:0; background:<?php echo $is_paused_sess ? '#fee2e2' : '#dcfce7'; ?>; color:<?php echo $is_paused_sess ? '#991b1b' : '#166534'; ?>;">
+                                            <?php echo $is_paused_sess ? '⏸️ Humano' : '✅ IA'; ?>
                                         </span>
                                     </div>
+
+                                    <!-- ETIQUETA DE CATEGORÍA SI TIENE -->
+                                    <?php if ($c_cat_info): ?>
+                                        <div style="margin-bottom:4px;">
+                                            <span class="cat-pill" style="background:<?php echo $c_cat_info['badge_bg']; ?>; color:<?php echo $c_cat_info['badge_color']; ?>; border:1px solid <?php echo $c_cat_info['border']; ?>;">
+                                                <?php echo $c_cat_info['label']; ?>
+                                            </span>
+                                        </div>
+                                    <?php endif; ?>
 
                                     <div style="font-size:12px; color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" id="conv_preview_<?php echo htmlspecialchars($ci['_session_id']); ?>">
                                         <?php echo htmlspecialchars($last_msg_short); ?>
@@ -644,43 +802,87 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
                         $ac_ip = $active_conv['ip'] ?? '';
                         $ac_phone = $active_conv['user_phone'] ?? '';
                         $ac_name = $active_conv['user_name'] ?? '';
+                        $ac_custom_name = $active_conv['custom_name'] ?? '';
+                        $ac_category = $active_conv['category'] ?? '';
+                        $ac_cat_info = !empty($ac_category) && isset($cat_list[$ac_category]) ? $cat_list[$ac_category] : null;
+
                         $ac_msgs = $active_conv['messages'] ?? [];
                         $ac_sess_id = $active_conv['_session_id'];
                         $is_paused_this = is_session_or_bot_paused($bot_id, $ac_sess_id);
+                        $ac_title = !empty($ac_custom_name) ? $ac_custom_name : (!empty($ac_name) ? $ac_name : (!empty($ac_phone) ? $ac_phone : 'Visitante ' . substr($ac_sess_id, 0, 8)));
                     ?>
                         <!-- HEADER DEL CHAT ACTIVO -->
                         <div class="chat-view-header">
-                            <div style="display:flex; align-items:center; gap:12px;">
-                                <div style="font-size:30px;"><?php echo $ac_flag; ?></div>
+                            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                                <!-- BOTÓN VOLVER EN MÓVIL -->
+                                <a href="?bot=<?php echo urlencode($bot_id); ?>&tab=chats" class="mobile-back-btn" title="Volver a lista de chats">
+                                    ⬅️ Chats
+                                </a>
+
+                                <div style="font-size:28px; line-height:1;"><?php echo $ac_flag; ?></div>
                                 <div>
-                                    <div style="display:flex; align-items:center; gap:8px;">
-                                        <h3 style="margin:0; font-size:16px; color:#0f172a;">
-                                            <?php echo !empty($ac_name) ? htmlspecialchars($ac_name) : (!empty($ac_phone) ? htmlspecialchars($ac_phone) : 'Visitante'); ?>
+                                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                        <h3 style="margin:0; font-size:16px; color:#0f172a; font-weight:800;">
+                                            <?php echo htmlspecialchars($ac_title); ?>
                                         </h3>
+                                        
+                                        <?php if ($ac_cat_info): ?>
+                                            <span class="cat-pill" style="background:<?php echo $ac_cat_info['badge_bg']; ?>; color:<?php echo $ac_cat_info['badge_color']; ?>; border:1px solid <?php echo $ac_cat_info['border']; ?>;">
+                                                <?php echo $ac_cat_info['label']; ?>
+                                            </span>
+                                        <?php endif; ?>
+
                                         <span id="sessionStatusBadge" style="font-size:11px; padding:2px 8px; border-radius:10px; font-weight:700; background:<?php echo $is_paused_this ? '#fee2e2' : '#dcfce7'; ?>; color:<?php echo $is_paused_this ? '#991b1b' : '#166534'; ?>;">
-                                            <?php echo $is_paused_this ? '&#9208;&#65039; Atenci&oacute;n Humana (IA Pausada)' : '&#9989; IA en Control'; ?>
+                                            <?php echo $is_paused_this ? '⏸️ Atención Humana (IA Pausada)' : '✅ IA en Control'; ?>
                                         </span>
                                     </div>
                                     <div style="font-size:12px; color:#64748b; margin-top:2px;">
                                         📍 <strong><?php echo htmlspecialchars($ac_country); ?></strong> <?php echo !empty($ac_city) ? '• ' . htmlspecialchars($ac_city) : ''; ?>
                                         <?php if (!empty($ac_phone)): ?> • Tel: <strong><?php echo htmlspecialchars($ac_phone); ?></strong><?php endif; ?>
-                                        <?php if (!empty($ac_ip)): ?> • IP: <code><?php echo htmlspecialchars($ac_ip); ?></code><?php endif; ?>
+                                        <?php if (!empty($ac_name) && !empty($ac_custom_name)): ?> • Registro: <strong><?php echo htmlspecialchars($ac_name); ?></strong><?php endif; ?>
                                     </div>
                                 </div>
                             </div>
 
                             <!-- BOTON DE PAUSA DE LA SESION -->
-                            <div>
+                            <div style="display:flex; gap:8px; align-items:center;">
                                 <button type="button" id="togglePauseBtn" onclick="toggleCurrentSessionPause()" class="pill-btn <?php echo $is_paused_this ? 'pill-btn-resume' : 'pill-btn-pause'; ?>">
-                                    <?php echo $is_paused_this ? '&#9654;&#65039; Reanudar IA (Bot Autom&aacute;tico)' : '&#9208;&#65039; Pausar IA (Tomar Control)'; ?>
+                                    <?php echo $is_paused_this ? '▶️ Reanudar IA' : '⏸️ Pausar IA'; ?>
                                 </button>
                             </div>
                         </div>
 
+                        <!-- BARRA PARA RENOMBRAR Y CATEGORIZAR ESTE CHAT -->
+                        <div class="chat-meta-bar">
+                            <form method="POST" action="" class="chat-meta-form">
+                                <input type="hidden" name="action" value="save_chat_meta">
+                                <input type="hidden" name="session_id" value="<?php echo htmlspecialchars($ac_sess_id); ?>">
+                                
+                                <div class="meta-field" style="flex: 2; min-width: 170px;">
+                                    <label style="font-size: 11px; font-weight: 700; color: #475569;">✏️ Nombre o Alias de este Chat:</label>
+                                    <input type="text" name="custom_name" value="<?php echo htmlspecialchars($ac_custom_name); ?>" placeholder="Ej: Carlos - Caso Hosting..." class="meta-input">
+                                </div>
+                                
+                                <div class="meta-field" style="flex: 1.5; min-width: 160px;">
+                                    <label style="font-size: 11px; font-weight: 700; color: #475569;">🏷️ Categoría / Etiqueta:</label>
+                                    <select name="category" class="meta-select">
+                                        <option value="">⚪ Sin categoría</option>
+                                        <?php foreach ($cat_list as $ckey => $cinfo): ?>
+                                            <option value="<?php echo $ckey; ?>" <?php echo ($ac_category === $ckey) ? 'selected' : ''; ?>>
+                                                <?php echo $cinfo['label']; ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+
+                                <button type="submit" class="meta-save-btn">💾 Guardar Nombre / Categoría</button>
+                            </form>
+                        </div>
+
                         <!-- BANNER INFORMATIVO SEGUN MODO -->
                         <div id="pauseNoticeBanner" style="display:<?php echo $is_paused_this ? 'flex' : 'none'; ?>; background:#fef3c7; border-bottom:1px solid #fde68a; color:#92400e; padding:8px 16px; font-size:12.5px; align-items:center; gap:8px;">
-                            <span>&#9208;&#65039;</span>
-                            <span><strong>La IA est&aacute; pausada para este visitante.</strong> Escribe abajo para responder t&uacute; mismo en tiempo real.</span>
+                            <span>⏸️</span>
+                            <span><strong>La IA está pausada para este visitante.</strong> Escribe abajo para responder tú mismo en tiempo real.</span>
                         </div>
 
                         <!-- BURBUJAS DE MENSAJES -->
@@ -695,8 +897,8 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
                                     </div>
                                     <div class="bubble-meta">
                                         <?php 
-                                            if ($snd === 'agent') echo '&#128100; T&uacute; (Asesor Humano)';
-                                            elseif ($snd === 'bot') echo '&#129302; Bot IA';
+                                            if ($snd === 'agent') echo '👤 Tú (Asesor Humano)';
+                                             elseif ($snd === 'bot') echo '🤖 Bot IA';
                                             else echo 'Visitante';
                                         ?> • <?php echo htmlspecialchars($m_time); ?>
                                     </div>
@@ -709,7 +911,7 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
                             <input type="text" id="agentInputText" class="chat-reply-input" placeholder="Escribe tu mensaje para responder al visitante en vivo..." autocomplete="off">
                             <button type="submit" class="chat-reply-send">
                                 <span>Enviar</span>
-                                <span>&#10148;</span>
+                                <span>➔</span>
                             </button>
                         </form>
 
@@ -789,12 +991,29 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
         let isSessionPaused = <?php echo ($active_conv && is_session_or_bot_paused($bot_id, $active_conv['_session_id'])) ? 'true' : 'false'; ?>;
         let lastMsgCount = <?php echo ($active_conv ? count($active_conv['messages'] ?? []) : 0); ?>;
 
+        let currentCategoryFilter = 'all';
+
+        function filterByCategory(cat, btn) {
+            currentCategoryFilter = cat;
+            document.querySelectorAll('.cat-filter-btn').forEach(b => b.classList.remove('active'));
+            if (btn) btn.classList.add('active');
+            applyCombinedFilters();
+        }
+
         function filterClientConversations() {
-            const q = document.getElementById('clientConvSearch').value.trim().toLowerCase();
+            applyCombinedFilters();
+        }
+
+        function applyCombinedFilters() {
+            const inputEl = document.getElementById('clientConvSearch');
+            const q = inputEl ? inputEl.value.trim().toLowerCase() : '';
             const cards = document.querySelectorAll('.conv-card');
             cards.forEach(c => {
-                const kw = c.getAttribute('data-kw') || '';
-                if (!q || kw.includes(q)) {
+                const kw = (c.getAttribute('data-kw') || '').toLowerCase();
+                const cat = c.getAttribute('data-category') || '';
+                const matchesQ = !q || kw.includes(q);
+                const matchesCat = (currentCategoryFilter === 'all') || (cat === currentCategoryFilter);
+                if (matchesQ && matchesCat) {
                     c.style.display = 'block';
                 } else {
                     c.style.display = 'none';

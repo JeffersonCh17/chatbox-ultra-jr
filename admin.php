@@ -258,7 +258,7 @@ if (isset($_SESSION['logged_in']) && isset($_POST['create_wa_instance'])) {
         'nested_menu' => trim($_POST['wa_nested_menu']),
         // Gemini
         'api_key' => trim($_POST['wa_api_key']),
-        'model' => trim($_POST['wa_model'] ?? 'gemini-3.0-flash'),
+        'model' => trim($_POST['wa_model'] ?? 'gemini-flash-lite-latest'),
         'prompt' => trim($_POST['wa_prompt']),
         'fallback_msg' => trim($_POST['wa_fallback_msg']),
         'webhook_url' => trim($_POST['wa_webhook_url'] ?? ''),
@@ -288,7 +288,7 @@ if (isset($_SESSION['logged_in']) && isset($_POST['update_wa_instance'])) {
         $wa_settings['instances'][$wa_id]['welcome_msg'] = trim($_POST['wa_welcome_msg']);
         $wa_settings['instances'][$wa_id]['nested_menu'] = trim($_POST['wa_nested_menu']);
         $wa_settings['instances'][$wa_id]['api_key'] = trim($_POST['wa_api_key']);
-        $wa_settings['instances'][$wa_id]['model'] = trim($_POST['wa_model'] ?? 'gemini-3.0-flash');
+        $wa_settings['instances'][$wa_id]['model'] = trim($_POST['wa_model'] ?? 'gemini-flash-lite-latest');
         $wa_settings['instances'][$wa_id]['prompt'] = trim($_POST['wa_prompt']);
         $wa_settings['instances'][$wa_id]['fallback_msg'] = trim($_POST['wa_fallback_msg']);
         $wa_settings['instances'][$wa_id]['webhook_url'] = trim($_POST['wa_webhook_url'] ?? '');
@@ -638,12 +638,16 @@ $base_url = get_system_base_url();
                     <label>Nombre identificador:</label>
                     <input type="text" name="bot_name" placeholder="Ej: Consultorio Legal Venezuela" required>
                     
-                    <label>API Key(s) de Gemini:</label>
-                    <div class="help-text">Puedes colocar una o varias separadas por comas. Si una falla o se satura, el sistema rotará automáticamente a la siguiente:</div>
-                    <input type="text" name="bot_api_key" placeholder="AIzaSyKey1, AIzaSyKey2..." required>
+                    <label>API Key(s) de Gemini (Rotación Multi-Key Infinita):</label>
+                    <div class="help-text">Coloca <strong>todas las API Keys que quieras</strong> (una por línea o separadas por comas). Si una clave se agota (429) o falla, el sistema rotará de inmediato a la siguiente sin interrumpir el chat:</div>
+                    <textarea name="bot_api_key" id="new_bot_api_key" rows="3" style="width:100%; font-family:monospace; font-size:12.5px; padding:10px; border-radius:8px; border:1px solid #cbd5e1;" placeholder="AIzaSyClave1...&#10;AIzaSyClave2...&#10;AIzaSyClave3..." oninput="updateKeyCounter(this, 'new_key_counter')" required></textarea>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px; margin-bottom:10px; font-size:12px;">
+                        <span id="new_key_counter" style="color:#166534; font-weight:700;">🔑 0 claves detectadas</span>
+                        <span style="color:#64748b;">Pega una debajo de otra</span>
+                    </div>
 
                     <label>Modelo de Gemini:</label>
-                    <input type="text" name="bot_model" value="gemini-3.5-flash" required>
+                    <input type="text" name="bot_model" value="gemini-3.8-flash" required>
 
                     <label class="checkbox-label">
                         <input type="checkbox" name="require_form" value="1" checked id="new_bot_req_form" onchange="document.getElementById('new_bot_wh_box').style.display = this.checked ? 'block' : 'none';">
@@ -913,12 +917,23 @@ $base_url = get_system_base_url();
                                     <label>Nombre identificador:</label>
                                     <input type="text" name="bot_name" value="<?php echo htmlspecialchars($bot['name']); ?>" required>
                                     
-                                    <label>API Key(s) de Gemini (Rotación Multi-Key):</label>
-                                    <div class="help-text">Puedes poner varias llaves separadas por coma para respaldo automático si una se agota:</div>
-                                    <input type="text" name="bot_api_key" value="<?php echo htmlspecialchars($bot['api_key'] ?? ''); ?>" placeholder="AIzaSy1, AIzaSy2..." required>
+                                    <?php 
+                                        $parsed_keys = parse_api_keys($bot['api_key'] ?? '');
+                                        $keys_textarea = implode("\n", $parsed_keys);
+                                        $count_k = count($parsed_keys);
+                                    ?>
+                                    <label>API Key(s) de Gemini (Rotación Multi-Key Infinita):</label>
+                                    <div class="help-text">Configura <strong>tantas API Keys como quieras</strong> (una por línea o con comas). Si la clave #1 se agota (429) o da error, el chat rotará de inmediato a la #2, #3, etc., de forma 100% automática:</div>
+                                    <textarea name="bot_api_key" id="api_key_<?php echo $id; ?>" rows="4" style="width:100%; font-family:monospace; font-size:12.5px; padding:10px; border-radius:8px; border:1px solid #cbd5e1;" placeholder="AIzaSyClave1...&#10;AIzaSyClave2...&#10;AIzaSyClave3..." oninput="updateKeyCounter(this, 'counter_<?php echo $id; ?>')" required><?php echo htmlspecialchars($keys_textarea); ?></textarea>
+                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px; margin-bottom:10px; font-size:12px;">
+                                        <span id="counter_<?php echo $id; ?>" style="color:<?php echo $count_k > 1 ? '#166534' : ($count_k === 1 ? '#2563eb' : '#dc2626'); ?>; font-weight:700;">
+                                            🔑 <?php echo $count_k; ?> <?php echo $count_k === 1 ? 'clave configurada' : 'claves configuradas (Rotación Infinita Activa ✅)'; ?>
+                                        </span>
+                                        <button type="button" class="btn-sm" style="background:#f1f5f9; color:#334155; border:1px solid #cbd5e1; font-size:11px;" onclick="addAnotherKeyPrompt('api_key_<?php echo $id; ?>', 'counter_<?php echo $id; ?>')">➕ Añadir otra clave</button>
+                                    </div>
                                     
                                     <label>Modelo de Gemini:</label>
-                                    <input type="text" name="bot_model" value="<?php echo htmlspecialchars($bot['model'] ?? 'gemini-3.5-flash'); ?>" required>
+                                    <input type="text" name="bot_model" value="<?php echo htmlspecialchars($bot['model'] ?? 'gemini-3.8-flash'); ?>" required>
 
                                     <label class="checkbox-label" style="margin-top: 10px;">
                                         <input type="checkbox" name="require_form" value="1" <?php if($req_form) echo 'checked'; ?> onchange="document.getElementById('wh_box_<?php echo $id; ?>').style.display = this.checked ? 'block' : 'none';">
@@ -1105,12 +1120,16 @@ $base_url = get_system_base_url();
                     <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
 
                     <h4 style="margin:0 0 10px 0; color:#0f172a;">🤖 Inteligencia Artificial (Gemini Multi-Key)</h4>
-                    <label>API Key(s) de Gemini (Rotación automática):</label>
-                    <div class="help-text">Puedes colocar varias separadas por coma. Si una falla o se satura, el bot usará la siguiente:</div>
-                    <input type="text" name="wa_api_key" placeholder="AIzaSyKey1, AIzaSyKey2..." required>
+                    <label>API Key(s) de Gemini (Rotación Multi-Key Infinita):</label>
+                    <div class="help-text">Puedes colocar <strong>tantas API Keys como quieras</strong> (una por línea o con comas). Si una clave se satura (429) o da error, el bot rotará automáticamente a la siguiente:</div>
+                    <textarea name="wa_api_key" id="new_wa_api_key" rows="3" style="width:100%; font-family:monospace; font-size:12.5px; padding:10px; border-radius:8px; border:1px solid #cbd5e1;" placeholder="AIzaSyClave1...&#10;AIzaSyClave2...&#10;AIzaSyClave3..." oninput="updateKeyCounter(this, 'new_wa_key_counter')" required></textarea>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px; margin-bottom:10px; font-size:12px;">
+                        <span id="new_wa_key_counter" style="color:#166534; font-weight:700;">🔑 0 claves detectadas</span>
+                        <span style="color:#64748b;">Pega una por línea o con comas</span>
+                    </div>
 
                     <label>Modelo de Gemini:</label>
-                    <input type="text" name="wa_model" value="gemini-3.0-flash" required>
+                    <input type="text" name="wa_model" value="gemini-3.8-flash" required>
 
                     <label>Prompt para WhatsApp:</label>
                     <textarea name="wa_prompt" rows="4" placeholder="Eres el asistente oficial de WhatsApp. Responde de forma breve y cordial..." required></textarea>
@@ -1408,12 +1427,23 @@ $base_url = get_system_base_url();
 
                                     <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
 
-                                    <label>API Key(s) de Gemini (Rotación Multi-Key):</label>
-                                    <div class="help-text">Puedes colocar varias separadas por coma para respaldo automático si una se agota:</div>
-                                    <input type="text" name="wa_api_key" value="<?php echo htmlspecialchars($wa['api_key'] ?? ''); ?>" placeholder="AIzaSy1, AIzaSy2..." required>
+                                    <?php 
+                                        $parsed_wa_keys = parse_api_keys($wa['api_key'] ?? '');
+                                        $wa_keys_textarea = implode("\n", $parsed_wa_keys);
+                                        $count_wa_k = count($parsed_wa_keys);
+                                    ?>
+                                    <label>API Key(s) de Gemini (Rotación Multi-Key Infinita):</label>
+                                    <div class="help-text">Configura <strong>tantas API Keys como desees</strong> (una por línea o con comas). Si la clave #1 se agota (429) o da error, el bot rotará automáticamente a la #2, #3, etc.:</div>
+                                    <textarea name="wa_api_key" id="wa_key_<?php echo $wa_id; ?>" rows="4" style="width:100%; font-family:monospace; font-size:12.5px; padding:10px; border-radius:8px; border:1px solid #cbd5e1;" placeholder="AIzaSyClave1...&#10;AIzaSyClave2...&#10;AIzaSyClave3..." oninput="updateKeyCounter(this, 'wa_counter_<?php echo $wa_id; ?>')" required><?php echo htmlspecialchars($wa_keys_textarea); ?></textarea>
+                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px; margin-bottom:10px; font-size:12px;">
+                                        <span id="wa_counter_<?php echo $wa_id; ?>" style="color:<?php echo $count_wa_k > 1 ? '#166534' : ($count_wa_k === 1 ? '#2563eb' : '#dc2626'); ?>; font-weight:700;">
+                                            🔑 <?php echo $count_wa_k; ?> <?php echo $count_wa_k === 1 ? 'clave configurada' : 'claves configuradas (Rotación Infinita Activa ✅)'; ?>
+                                        </span>
+                                        <button type="button" class="btn-sm" style="background:#f1f5f9; color:#334155; border:1px solid #cbd5e1; font-size:11px;" onclick="addAnotherKeyPrompt('wa_key_<?php echo $wa_id; ?>', 'wa_counter_<?php echo $wa_id; ?>')">➕ Añadir otra clave</button>
+                                    </div>
 
                                     <label>Modelo de Gemini:</label>
-                                    <input type="text" name="wa_model" value="<?php echo htmlspecialchars($wa['model'] ?? 'gemini-3.0-flash'); ?>" required>
+                                    <input type="text" name="wa_model" value="<?php echo htmlspecialchars($wa['model'] ?? 'gemini-3.8-flash'); ?>" required>
 
                                     <label>Prompt para WhatsApp:</label>
                                     <textarea name="wa_prompt" rows="4" required><?php echo htmlspecialchars($wa['prompt'] ?? ''); ?></textarea>
@@ -1658,7 +1688,10 @@ $base_url = get_system_base_url();
         </div>
 
         <!-- EXPLORADOR SPLIT-SCREEN (LISTA IZQUIERDA + CHAT DERECHA) -->
-        <?php if (empty($conv_items)): ?>
+        <?php 
+            $cat_list = function_exists('get_chat_categories') ? get_chat_categories() : [];
+            if (empty($conv_items)): 
+        ?>
             <div style="background:#ffffff; border:2px dashed #cbd5e1; border-radius:12px; padding:50px 20px; text-align:center; color:#64748b;">
                 <div style="font-size:48px; margin-bottom:12px;">💬</div>
                 <h3 style="margin:0 0 8px 0; color:#0f172a;">No hay conversaciones registradas todavía</h3>
@@ -1693,8 +1726,12 @@ $base_url = get_system_base_url();
                             $last_msg_short = mb_strimwidth($last_msg, 0, 55, '...');
                             $last_time = date('d/m H:i', strtotime($ci['last_activity'] ?? $ci['started_at']));
                             
-                            $title_display = !empty($c_name) ? htmlspecialchars($c_name) : (!empty($c_phone) ? htmlspecialchars($c_phone) : (!empty($c_ip) ? htmlspecialchars($c_ip) : 'Visitante'));
-                            $search_keywords = strtolower($ci['country'] . ' ' . $ci['city'] . ' ' . $c_name . ' ' . $c_phone . ' ' . $c_ip . ' ' . $ci['_bot_name'] . ' ' . $last_msg);
+                            $c_cname = !empty($ci['custom_name']) ? $ci['custom_name'] : '';
+                            $c_cat_key = !empty($ci['category']) ? $ci['category'] : '';
+                            $c_cat_meta = (!empty($c_cat_key) && isset($cat_list[$c_cat_key])) ? $cat_list[$c_cat_key] : null;
+
+                            $title_display = !empty($c_cname) ? htmlspecialchars($c_cname) : (!empty($c_name) ? htmlspecialchars($c_name) : (!empty($c_phone) ? htmlspecialchars($c_phone) : (!empty($c_ip) ? htmlspecialchars($c_ip) : 'Visitante')));
+                            $search_keywords = strtolower($ci['country'] . ' ' . $ci['city'] . ' ' . $c_cname . ' ' . $c_name . ' ' . $c_phone . ' ' . $c_ip . ' ' . $ci['_bot_name'] . ' ' . ($c_cat_meta['name'] ?? '') . ' ' . $last_msg);
                         ?>
                             <a href="?tab=analytics&filter_bot=<?php echo urlencode($filter_bot); ?>&filter_channel=<?php echo urlencode($filter_channel); ?>&sess=<?php echo urlencode($ci['_session_id']); ?>" 
                                class="chat-conv-item <?php echo $is_current ? 'active' : ''; ?>"
@@ -1711,7 +1748,7 @@ $base_url = get_system_base_url();
                                     <span style="font-size:11px; color:#94a3b8;"><?php echo $last_time; ?></span>
                                 </div>
 
-                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
                                     <div style="font-size:13px; font-weight:600; color:#1e293b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:210px;">
                                         <?php echo $title_display; ?>
                                     </div>
@@ -1719,6 +1756,14 @@ $base_url = get_system_base_url();
                                         <?php echo $c_channel === 'whatsapp' ? '📱 WA' : '🌐 Web'; ?>
                                     </span>
                                 </div>
+
+                                <?php if ($c_cat_meta): ?>
+                                    <div style="margin-bottom:5px;">
+                                        <span style="font-size:10px; font-weight:700; padding:1px 6px; border-radius:8px; background:<?php echo $c_cat_meta['badge_bg']; ?>; color:<?php echo $c_cat_meta['badge_color']; ?>; border:1px solid <?php echo $c_cat_meta['border']; ?>;">
+                                            <?php echo $c_cat_meta['label']; ?>
+                                        </span>
+                                    </div>
+                                <?php endif; ?>
 
                                 <div style="font-size:12px; color:#64748b; line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
                                     <?php echo htmlspecialchars($last_msg_short); ?>
@@ -1750,10 +1795,21 @@ $base_url = get_system_base_url();
                             <div style="display:flex; align-items:center; gap:12px;">
                                 <div style="font-size:32px;"><?php echo $ac_flag; ?></div>
                                 <div>
-                                    <div style="display:flex; align-items:center; gap:8px;">
-                                        <h3 style="margin:0; font-size:16px; color:#0f172a;">
-                                            <?php echo !empty($ac_name) ? htmlspecialchars($ac_name) : (!empty($ac_phone) ? htmlspecialchars($ac_phone) : 'Visitante'); ?>
+                                    <?php 
+                                        $ac_cname = !empty($active_conv['custom_name']) ? $active_conv['custom_name'] : '';
+                                        $ac_cat = !empty($active_conv['category']) ? $active_conv['category'] : '';
+                                        $ac_cat_meta = (!empty($ac_cat) && isset($cat_list[$ac_cat])) ? $cat_list[$ac_cat] : null;
+                                        $ac_title_display = !empty($ac_cname) ? htmlspecialchars($ac_cname) : (!empty($ac_name) ? htmlspecialchars($ac_name) : (!empty($ac_phone) ? htmlspecialchars($ac_phone) : 'Visitante'));
+                                    ?>
+                                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                        <h3 style="margin:0; font-size:16px; color:#0f172a; font-weight:800;">
+                                            <?php echo $ac_title_display; ?>
                                         </h3>
+                                        <?php if ($ac_cat_meta): ?>
+                                            <span style="font-size:11px; padding:2px 7px; border-radius:10px; font-weight:700; background:<?php echo $ac_cat_meta['badge_bg']; ?>; color:<?php echo $ac_cat_meta['badge_color']; ?>; border:1px solid <?php echo $ac_cat_meta['border']; ?>;">
+                                                <?php echo $ac_cat_meta['label']; ?>
+                                            </span>
+                                        <?php endif; ?>
                                         <span class="badge" style="background:<?php echo $ac_channel === 'whatsapp' ? '#dcfce7' : '#dbeafe'; ?>; color:<?php echo $ac_channel === 'whatsapp' ? '#166534' : '#1e40af'; ?>; font-size:11px;">
                                             <?php echo $ac_channel === 'whatsapp' ? '📱 WhatsApp' : '🌐 Web Widget'; ?>
                                         </span>
@@ -2250,6 +2306,35 @@ $base_url = get_system_base_url();
                 }
             } catch(e) {
                 alert('Error enviando mensaje.');
+            }
+        }
+
+        function updateKeyCounter(textarea, counterId) {
+            const raw = textarea.value;
+            const parts = raw.split(/[\n,;]+/).map(k => k.trim()).filter(k => k.length >= 15);
+            const count = parts.length;
+            const counter = document.getElementById(counterId);
+            if (!counter) return;
+            if (count === 0) {
+                counter.innerHTML = '🔑 0 claves detectadas';
+                counter.style.color = '#dc2626';
+            } else if (count === 1) {
+                counter.innerHTML = '🔑 1 clave configurada (Añade al menos otra debajo para rotación)';
+                counter.style.color = '#2563eb';
+            } else {
+                counter.innerHTML = '🔑 ' + count + ' claves configuradas (Rotación Infinita Activa ✅)';
+                counter.style.color = '#166534';
+            }
+        }
+
+        function addAnotherKeyPrompt(textareaId, counterId) {
+            const ta = document.getElementById(textareaId);
+            if (!ta) return;
+            const newKey = prompt('Pega tu nueva API Key de Gemini:');
+            if (newKey && newKey.trim().length >= 15) {
+                const val = ta.value.trim();
+                ta.value = val ? val + "\n" + newKey.trim() : newKey.trim();
+                updateKeyCounter(ta, counterId);
             }
         }
     </script>
