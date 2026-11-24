@@ -61,7 +61,7 @@ if (isset($_SESSION['logged_in']) && isset($_GET['export_leads'])) {
     fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
     fputcsv($output, ['ID', 'Fecha y Hora', 'Nombre', 'Teléfono', 'IP']);
     foreach ($bot_leads as $l) {
-        fputcsv($output, [$l['id'] ?? '', $l['date'] ?? '', $l['name'] ?? '', $l['phone'] ?? '', $l['ip'] ?? '']);
+        fputcsv($output, [$l['id'] ?? '', $l['date'] ?? '', $l['name'] ?? '', $l['phone'] ?? '', mask_ip($l['ip'] ?? '')]);
     }
     fclose($output);
     exit;
@@ -108,7 +108,7 @@ if (isset($_SESSION['logged_in']) && isset($_GET['export_convs'])) {
                 $c['last_activity'] ?? '',
                 $c['country'] ?? '',
                 $c['city'] ?? '',
-                !empty($c['user_phone']) ? $c['user_phone'] : ($c['ip'] ?? ''),
+                !empty($c['user_phone']) ? $c['user_phone'] : mask_ip($c['ip'] ?? ''),
                 $c['user_name'] ?? '',
                 $c['messages_count'] ?? count($c['messages'] ?? []),
                 $transcript
@@ -1730,7 +1730,7 @@ $base_url = get_system_base_url();
                             $c_cat_key = !empty($ci['category']) ? $ci['category'] : '';
                             $c_cat_meta = (!empty($c_cat_key) && isset($cat_list[$c_cat_key])) ? $cat_list[$c_cat_key] : null;
 
-                            $title_display = !empty($c_cname) ? htmlspecialchars($c_cname) : (!empty($c_name) ? htmlspecialchars($c_name) : (!empty($c_phone) ? htmlspecialchars($c_phone) : (!empty($c_ip) ? htmlspecialchars($c_ip) : 'Visitante')));
+                            $title_display = !empty($c_cname) ? htmlspecialchars($c_cname) : (!empty($c_name) ? htmlspecialchars($c_name) : (!empty($c_phone) ? htmlspecialchars($c_phone) : (!empty($c_ip) ? htmlspecialchars(mask_ip($c_ip)) : 'Visitante')));
                             $search_keywords = strtolower($ci['country'] . ' ' . $ci['city'] . ' ' . $c_cname . ' ' . $c_name . ' ' . $c_phone . ' ' . $c_ip . ' ' . $ci['_bot_name'] . ' ' . ($c_cat_meta['name'] ?? '') . ' ' . $last_msg);
                         ?>
                             <a href="?tab=analytics&filter_bot=<?php echo urlencode($filter_bot); ?>&filter_channel=<?php echo urlencode($filter_channel); ?>&sess=<?php echo urlencode($ci['_session_id']); ?>" 
@@ -1816,7 +1816,7 @@ $base_url = get_system_base_url();
                                     </div>
                                     <div style="font-size:12px; color:#64748b; margin-top:2px;">
                                         📍 <strong><?php echo htmlspecialchars($ac_country); ?></strong> <?php echo !empty($ac_city) ? '• ' . htmlspecialchars($ac_city) : ''; ?>
-                                        <?php if (!empty($ac_ip)): ?> • IP: <code><?php echo htmlspecialchars($ac_ip); ?></code><?php endif; ?>
+                                        <?php if (!empty($ac_ip)): ?> • IP: <code><?php echo htmlspecialchars(mask_ip($ac_ip)); ?></code><?php endif; ?>
                                         <?php if (!empty($ac_phone)): ?> • Tel: <strong><?php echo htmlspecialchars($ac_phone); ?></strong><?php endif; ?>
                                     </div>
                                 </div>

@@ -265,6 +265,39 @@ function get_client_ip() {
     return $ip;
 }
 
+/**
+ * Enmascara una dirección IP para proteger la privacidad del usuario (ej: 190.6.45.***)
+ */
+function mask_ip($ip) {
+    if (empty($ip) || $ip === '-' || $ip === 'Desconocida' || $ip === 'Desconocido') {
+        return '-';
+    }
+    $ip = trim((string)$ip);
+    if (strpos($ip, '*') !== false) {
+        return $ip;
+    }
+    // IPv4
+    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+        $parts = explode('.', $ip);
+        return $parts[0] . '.' . $parts[1] . '.' . $parts[2] . '.***';
+    }
+    // IPv6
+    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+        $parts = explode(':', $ip);
+        if (count($parts) >= 3) {
+            return $parts[0] . ':' . $parts[1] . ':****:****';
+        }
+    }
+    // Fallback con puntos
+    if (strpos($ip, '.') !== false) {
+        $parts = explode('.', $ip);
+        if (count($parts) >= 4) {
+            return $parts[0] . '.' . $parts[1] . '.' . $parts[2] . '.***';
+        }
+    }
+    return substr($ip, 0, min(6, strlen($ip))) . '***';
+}
+
 function country_code_to_flag($code) {
     if (empty($code) || strlen($code) !== 2) return '🌐';
     $code = strtoupper($code);

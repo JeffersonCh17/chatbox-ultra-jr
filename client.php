@@ -59,7 +59,7 @@ if ($is_authenticated && isset($_GET['export_leads'])) {
     fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
     fputcsv($out, ['Nombre', 'Teléfono', 'Fecha', 'IP']);
     foreach ($leads as $l) {
-        fputcsv($out, [$l['name'] ?? '', $l['phone'] ?? '', $l['date'] ?? '', $l['ip'] ?? '']);
+        fputcsv($out, [$l['name'] ?? '', $l['phone'] ?? '', $l['date'] ?? '', mask_ip($l['ip'] ?? '')]);
     }
     fclose($out);
     exit;
@@ -87,7 +87,7 @@ if ($is_authenticated && isset($_GET['export_convs'])) {
             $c['last_activity'] ?? '',
             $c['country'] ?? '',
             $c['city'] ?? '',
-            !empty($c['user_phone']) ? $c['user_phone'] : ($c['ip'] ?? ''),
+            !empty($c['user_phone']) ? $c['user_phone'] : mask_ip($c['ip'] ?? ''),
             $c['user_name'] ?? '',
             count($c['messages'] ?? []),
             $tr
@@ -665,7 +665,7 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
                                         <td><strong><?php echo htmlspecialchars($lead['name'] ?? 'Anónimo'); ?></strong></td>
                                         <td><?php echo htmlspecialchars($lead['phone'] ?? '-'); ?></td>
                                         <td><?php echo htmlspecialchars($lead['date'] ?? '-'); ?></td>
-                                        <td><code><?php echo htmlspecialchars($lead['ip'] ?? '-'); ?></code></td>
+                                        <td><code><?php echo htmlspecialchars(mask_ip($lead['ip'] ?? '-')); ?></code></td>
                                         <td>
                                             <?php if (!empty($clean_tel)): ?>
                                                 <a href="https://wa.me/<?php echo $clean_tel; ?>" target="_blank" class="pill-btn pill-btn-resume" style="font-size:11.5px; padding:4px 10px;">
@@ -748,7 +748,7 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
                                     $sub_ident = '';
                                 } else {
                                     $title_disp = 'Visitante ' . substr($ci['_session_id'], 0, 8);
-                                    $sub_ident = !empty($c_ip) ? htmlspecialchars($c_ip) : '';
+                                    $sub_ident = !empty($c_ip) ? htmlspecialchars(mask_ip($c_ip)) : '';
                                 }
 
                                 $kw = strtolower($c_custom_name . ' ' . $c_name . ' ' . $c_phone . ' ' . $c_ip . ' ' . $c_country . ' ' . $c_city . ' ' . ($c_cat_info['name'] ?? '') . ' ' . $last_msg);
@@ -965,7 +965,7 @@ $is_bot_globally_paused = !empty($bot['is_paused']);
                                         <td><strong style="color:#0f172a;"><?php echo htmlspecialchars($l['name'] ?? 'Sin nombre'); ?></strong></td>
                                         <td><?php echo htmlspecialchars($l['phone'] ?? '-'); ?></td>
                                         <td><?php echo htmlspecialchars($l['date'] ?? '-'); ?></td>
-                                        <td><code><?php echo htmlspecialchars($l['ip'] ?? '-'); ?></code></td>
+                                        <td><code><?php echo htmlspecialchars(mask_ip($l['ip'] ?? '-')); ?></code></td>
                                         <td>
                                             <?php if (!empty($raw_p)): ?>
                                                 <a href="https://wa.me/<?php echo $raw_p; ?>?text=<?php echo urlencode("Hola " . ($l['name'] ?? '') . ", te escribo respecto a tu consulta en nuestro sitio web."); ?>" target="_blank" class="pill-btn pill-btn-resume" style="padding:4px 10px; font-size:12px;">
